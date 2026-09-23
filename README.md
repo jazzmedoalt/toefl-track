@@ -20,7 +20,9 @@ Every push to GitHub builds the app on GitHub Actions, for both Windows and Linu
 
 1. Push this folder to a GitHub repository.
 2. Open **Actions → Build portable app → the latest run → Artifacts**.
-3. Download **TOEFL-Track.exe** (Windows) or **TOEFL-Track** (Linux, run `chmod +x TOEFL-Track` first).
+3. Download **TOEFL-Track.exe** (Windows), **TOEFL-Track-x86_64.AppImage** (Linux, recommended: it shows the app icon and needs no install), or the plain **TOEFL-Track** Linux binary. On Linux, run `chmod +x` on the file first.
+
+The AppImage keeps `toefl_data.db` next to the `.AppImage` file. To build it locally, run `tools/build_appimage.sh .venv/bin`.
 
 To publish a release, push a tag: `git tag v1.0.0 && git push --tags`. Both files are then attached to a GitHub Release.
 

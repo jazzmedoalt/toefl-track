@@ -27,7 +27,10 @@ def _writable(d: Path) -> bool:
 def data_dir() -> Path:
     """Portable: data lives next to the executable. Falls back to the user profile
     only if that folder is read-only (e.g. the exe was dropped in Program Files)."""
-    here = Path(sys.executable).resolve().parent if FROZEN else ROOT
+    if os.environ.get("APPIMAGE"):  # AppImage runs from a read-only mount; use the .AppImage's folder
+        here = Path(os.environ["APPIMAGE"]).resolve().parent
+    else:
+        here = Path(sys.executable).resolve().parent if FROZEN else ROOT
     if _writable(here):
         return here
     if os.name == "nt":

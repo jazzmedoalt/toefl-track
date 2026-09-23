@@ -1,5 +1,6 @@
 # PyInstaller spec: one portable file (TOEFL-Track.exe on Windows, TOEFL-Track on Linux).
 # Build:  pyinstaller --noconfirm --clean toefl_track.spec
+import os
 import sys
 
 # Only QtCore/QtGui/QtWidgets/QtSvg are used; drop the rest to keep the file small.
@@ -31,12 +32,16 @@ a.binaries = [b for b in a.binaries if not any(x in b[0] for x in DROP)]
 
 pyz = PYZ(a.pure)
 
+# TOEFL_ONEDIR=1 builds a folder instead of one file (used to assemble the AppImage,
+# which is already a single file, so this avoids extracting twice on every launch).
+ONEDIR = bool(os.environ.get("TOEFL_ONEDIR"))
+
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
+    *([] if ONEDIR else [a.binaries, a.datas]),
     [],
+    exclude_binaries=ONEDIR,
     name="TOEFL-Track",
     debug=False,
     strip=sys.platform != "win32",
@@ -45,3 +50,7 @@ exe = EXE(
     console=False,
     icon="assets/icon.ico" if sys.platform == "win32" else None,
 )
+
+if ONEDIR:
+    coll = COLLECT(exe, a.binaries, a.datas, strip=sys.platform != "win32", upx=False,
+                   name="TOEFL-Track")
