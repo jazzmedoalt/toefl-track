@@ -2,26 +2,14 @@
 from datetime import date, timedelta
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QButtonGroup, QHBoxLayout, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QHBoxLayout, QPushButton, QVBoxLayout
 
 from .. import db
 from .. import theme as T
 from ..widgets.calendar import MonthGrid, WeekView
-from ..widgets.cards import Card, ScorePill, button, label
+from ..widgets.cards import Card, ScorePill, Segmented, button, label
 from ..widgets.toast import AnimatedStack
 from .base import Page, clear_layout
-
-
-def _seg(text):
-    b = QPushButton(text)
-    b.setCheckable(True)
-    b.setCursor(Qt.PointingHandCursor)
-    b.setStyleSheet(
-        f"QPushButton {{ border: none; border-radius: 14px; padding: 5px 16px; min-height: 18px; color: {T.MUTED};"
-        f" font-family: \"{T.MONO}\"; font-size: 12px; letter-spacing: 1px; }}"
-        f"QPushButton:hover {{ color: {T.TEXT}; }}"
-        f"QPushButton:checked {{ background: {T.TEXT}; color: #000000; }}")
-    return b
 
 
 class CalendarPage(Page):
@@ -34,18 +22,8 @@ class CalendarPage(Page):
         self.selected = date.today()
 
         # view toggle
-        seg = QWidget()
-        seg.setStyleSheet(f"QWidget#Seg {{ border: 1px solid {T.BORDER_HI}; border-radius: 17px; }}")
-        seg.setObjectName("Seg")
-        sl = QHBoxLayout(seg)
-        sl.setContentsMargins(3, 3, 3, 3)
-        sl.setSpacing(2)
-        self.grp = QButtonGroup(self)
-        for i, t in enumerate(("MONTH", "WEEK")):
-            b = _seg(t)
-            self.grp.addButton(b, i)
-            sl.addWidget(b)
-        self.grp.button(0).setChecked(True)
+        seg = Segmented(("MONTH", "WEEK"))
+        self.grp = seg.group
         self.grp.idClicked.connect(self._set_mode)
         self.add_action(seg)
 

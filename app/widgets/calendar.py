@@ -21,7 +21,8 @@ def fill_for(avg):
 
 
 def ink_for(avg):
-    return QColor("#000000") if avg is not None and avg >= 5 else QColor(T.TEXT)
+    fill = fill_for(avg)
+    return QColor(T.ink_on(fill.name().upper()) if fill is not None else T.TEXT)
 
 
 def tooltip_for(d, items):

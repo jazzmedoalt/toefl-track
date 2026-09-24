@@ -11,6 +11,29 @@ DEFAULT_CATEGORIES = [
     "Inference", "Main Idea", "Detail", "Spelling",
 ]
 
+# Why a wrong answer fooled you. key, name, icon, what it is, what to do about it.
+REASONS = [
+    ("sound", "Sound-Alike or Look-Alike", "ear", "Words that sound similar when spoken",
+     "Say both words out loud and write a 3-word example for each."),
+    ("cognate", "False Cognates", "languages", "Words that look like words in your language but aren't",
+     "Don't trust “looks familiar”: check the English meaning, not your language's."),
+    ("context", "Context Misfit", "puzzle", "Real suffixes but creating nonsense words",
+     "Read the whole sentence first, then ask: does this word fit here?"),
+    ("collocation", "Collocation Confusion", "link-2", "Words that don't naturally go together",
+     "Learn words in pairs, like “make a decision” (not “do a decision”)."),
+    ("partial", "Partial Completion", "scissors", "Missing just one letter, feels almost right",
+     "Slow down and spell it letter by letter before you move on."),
+    ("morph", "Morphological Confusion", "shuffle", "Common endings exploiting uncertainty",
+     "Learn the word family together: -tion, -tive, -ly…"),
+]
+UNTAGGED = "-"   # filter value: mistakes without a reason
+REASON = {r[0]: dict(key=r[0], name=r[1], icon=r[2], desc=r[3], tip=r[4]) for r in REASONS}
+
+
+def reason_name(key):
+    return REASON[key]["name"] if key in REASON else ""
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sets (
     id INTEGER PRIMARY KEY,
@@ -66,6 +89,9 @@ def conn() -> sqlite3.Connection:
         _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA foreign_keys = ON")
         _conn.executescript(_SCHEMA)
+        cols = {r["name"] for r in _conn.execute("PRAGMA table_info(mistakes)")}
+        if "reason" not in cols:   # added in 1.3
+            _conn.execute("ALTER TABLE mistakes ADD COLUMN reason TEXT NOT NULL DEFAULT ''")
         _conn.commit()
     return _conn
 
@@ -164,12 +190,12 @@ def list_mistakes(pid):
     return _all("SELECT * FROM mistakes WHERE practice_id=? ORDER BY id", (pid,))
 
 
-def add_mistake(pid, wrong, correct, category, topic):
-    return _run("INSERT INTO mistakes(practice_id, wrong, correct, category, topic) VALUES(?,?,?,?,?)",
-                (pid, wrong, correct, category, topic)).lastrowid
+def add_mistake(pid, wrong, correct, category, topic, reason=""):
+    return _run("INSERT INTO mistakes(practice_id, wrong, correct, category, topic, reason) VALUES(?,?,?,?,?,?)",
+                (pid, wrong, correct, category, topic, reason)).lastrowid
 
 
-_MISTAKE_FIELDS = {"wrong", "correct", "category", "topic"}
+_MISTAKE_FIELDS = {"wrong", "correct", "category", "topic", "reason"}
 
 
 def update_mistake(mid, field, value):
@@ -181,7 +207,7 @@ def delete_mistake(mid):
     _run("DELETE FROM mistakes WHERE id=?", (mid,))
 
 
-def all_mistakes(search="", category="", set_id=None):
+def all_mistakes(search="", category="", set_id=None, reason=""):
     sql = """SELECT m.*, p.name AS practice_name, p.id AS practice_id, s.name AS set_name, s.id AS set_id
              FROM mistakes m JOIN practices p ON p.id = m.practice_id JOIN sets s ON s.id = p.set_id
              WHERE 1=1"""
@@ -195,6 +221,12 @@ def all_mistakes(search="", category="", set_id=None):
     if set_id:
         sql += " AND s.id = ?"
         args.append(set_id)
+    if reason == UNTAGGED:
+        sql += f" AND m.reason NOT IN ({','.join('?' * len(REASONS))})"
+        args += [r[0] for r in REASONS]
+    elif reason:
+        sql += " AND m.reason = ?"
+        args.append(reason)
     return _all(sql + " ORDER BY m.id DESC", args)
 
 
@@ -363,7 +395,7 @@ def is_correct(answer, expected):
     return normalize(answer) == normalize(expected) and normalize(expected) != ""
 
 
-def quiz_pool(set_id=None, category="", n=None):
+def quiz_pool(set_id=None, category="", n=None, reason=""):
     """Never-quizzed mistakes first, then the most recently failed, then the rest (oldest first)."""
     sql = """SELECT m.*, s.name AS set_name, p.name AS practice_name,
                     (SELECT COUNT(*) FROM study_log l WHERE l.kind='quiz' AND l.ref_id=m.id) AS tries,
@@ -379,6 +411,9 @@ def quiz_pool(set_id=None, category="", n=None):
     if category:
         sql += " AND m.category = ?"
         args.append(category)
+    if reason:
+        sql += " AND m.reason = ?"
+        args.append(reason)
     rows = _all(sql, args)
     rows.sort(key=lambda r: (0, 0, r["id"]) if r["tries"] == 0
               else (1, -r["last_id"], 0) if r["last_ok"] == 0
@@ -444,14 +479,72 @@ def day_average(items):
     return sum(scored) / len(scored) if scored else None
 
 
+# ---------- breakpoints (wrong-answer reasons) ----------
+def reason_stats(today=None):
+    """Per reason: count, share, recent (last 14 days) vs prev (14 before), quiz accuracy."""
+    t = today or date.today()
+    r14, r28 = (t - timedelta(days=13)).isoformat(), (t - timedelta(days=27)).isoformat()
+    rows = _all("""SELECT m.reason AS reason, COUNT(*) AS n,
+                          SUM(p.date >= ?) AS recent, SUM(p.date >= ? AND p.date < ?) AS prev
+                   FROM mistakes m JOIN practices p ON p.id = m.practice_id GROUP BY m.reason""", (r14, r28, r14))
+    by = {r["reason"]: r for r in rows}
+    acc = {r["reason"]: r["acc"] for r in _all(
+        """SELECT m.reason AS reason, AVG(l.result) AS acc FROM study_log l JOIN mistakes m ON m.id = l.ref_id
+           WHERE l.kind = 'quiz' GROUP BY m.reason""")}
+    tagged = sum(r["n"] for k, r in by.items() if k in REASON)
+    out = []
+    for key, *_ in REASONS:
+        r = by.get(key)
+        n = r["n"] if r else 0
+        out.append(dict(REASON[key], count=n, share=n / tagged if tagged else 0.0,
+                        recent=(r["recent"] or 0) if r else 0, prev=(r["prev"] or 0) if r else 0,
+                        accuracy=acc.get(key)))
+    untagged = sum(r["n"] for k, r in by.items() if k not in REASON)
+    return dict(reasons=out, tagged=tagged, untagged=untagged)
+
+
+def breakpoint(stats=None):
+    """The reason that catches you most; ties go to the one you quiz worst on. None if nothing is tagged."""
+    rs = [r for r in (stats or reason_stats())["reasons"] if r["count"]]
+    if not rs:
+        return None
+    return min(rs, key=lambda r: (-r["count"], r["accuracy"] if r["accuracy"] is not None else 2))
+
+
+def reason_by_week(weeks=8, today=None):
+    """{reason: [count per week, oldest → this week]} by practice date."""
+    t = today or date.today()
+    start = t - timedelta(days=t.weekday()) - timedelta(weeks=weeks - 1)
+    out = {k: [0] * weeks for k in REASON}
+    for r in _all("""SELECT m.reason AS reason, p.date AS d FROM mistakes m JOIN practices p ON p.id = m.practice_id
+                     WHERE p.date >= ?""", (start.isoformat(),)):
+        if r["reason"] in out:
+            i = (date.fromisoformat(r["d"]) - start).days // 7
+            if 0 <= i < weeks:
+                out[r["reason"]][i] += 1
+    return start, out
+
+
+def reason_by_type():
+    """{(reason, type): count}, plus the types in order of how often they appear with a reason."""
+    rows = _all("""SELECT reason, CASE WHEN category='' THEN 'Other' ELSE category END AS cat, COUNT(*) AS n
+                   FROM mistakes WHERE reason != '' GROUP BY reason, cat""")
+    cells = {(r["reason"], r["cat"]): r["n"] for r in rows if r["reason"] in REASON}
+    totals = {}
+    for (_, c), n in cells.items():
+        totals[c] = totals.get(c, 0) + n
+    return cells, sorted(totals, key=lambda c: -totals[c])
+
+
 def export_csv(path):
     rows = _all("""SELECT s.name AS "set", p.name AS practice, p.date, p.score,
-                          m.wrong, m.correct, m.category AS type, m.topic
+                          m.wrong, m.correct, m.category AS type, m.reason, m.topic
                    FROM practices p JOIN sets s ON s.id = p.set_id
                    LEFT JOIN mistakes m ON m.practice_id = p.id
                    ORDER BY s.id, p.date, p.id, m.id""")
     with open(path, "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["set", "practice", "date", "score", "wrong", "correct", "type", "topic"])
+        w = csv.DictWriter(f, fieldnames=["set", "practice", "date", "score", "wrong", "correct", "type", "reason",
+                                           "topic"])
         w.writeheader()
         w.writerows(rows)
     return len(rows)

@@ -1,6 +1,6 @@
 # TOEFL Track
 
-A small desktop app for tracking TOEFL practice, in a Nothing OS–inspired look: AMOLED black, white, one red, dot-matrix type and dots everywhere.
+A small desktop app for tracking TOEFL practice, in a Nothing OS–inspired look: AMOLED black (or light), white, one red, dot-matrix type and dots everywhere.
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
@@ -10,16 +10,36 @@ A small desktop app for tracking TOEFL practice, in a Nothing OS–inspired look
 - **Sets:** one card per set with its average and a dot sparkline. Open a set to see its practices.
 - **Calendar:** your scores by **month** or by **week**. Each day is colored by its average: red below 5, grey from 5 to 7, white from 8 to 10, and the number is always shown next to the color. Click a day to list its practices, and click a practice to open it.
 - **Practice editor:** pick the score from 0 to 10 by clicking or by typing a digit. Type a mistake and press **Enter** to add it, and double-click a cell to edit it. Everything saves automatically.
-- **Mistakes:** every wrong answer in one searchable list, filtered by type or set. Double-click a row to open its practice, or right-click it to add it to flashcards.
+- **Mistakes:** every wrong answer in one searchable list, filtered by type, reason or set. Double-click a row to open its practice, or right-click it to add it to flashcards or set its reason.
+- **Breakpoints:** tag each mistake with *why* the wrong answer fooled you (see below). This page shows the trap that catches you most, whether it's getting better, which mistake types it hits, and what to do about it. **Drill these** starts a quiz with only those mistakes.
 - **Flashcards:** a word list with flip-card reviews and spaced repetition. Grade each card with 1 Again, 2 Hard, 3 Good or 4 Easy. There are three ways to add cards, and they all work together:
   - one at a time with **Add card**
   - from any mistake with **Add to flashcards**
   - many at once with **Paste list** (see below)
 - **Quiz:** see your old wrong answer and type the correct one. "I was right" accepts a correct answer written differently.
 - **Exam and streak:** set your test date and target average to get a countdown and an "on track" check.
-- **Settings:** exam date and target, open the data folder, export to CSV, and turn motion down.
+- **Settings:** dark or light mode, exam date and target, open the data folder, export to CSV, and turn motion down.
+- **Tour:** on first launch, Dot (a small dot-matrix face) walks you through the app in 11 steps. Press **?** in the title bar to see it again. Use ←/→ to move and Esc to skip.
+- **Light mode:** the sun/moon button in the title bar, or Settings → Appearance.
 
 ![Calendar](docs/screenshots/calendar.png)
+
+## Breakpoints: why the wrong answer fooled you
+
+When you log a mistake, pick a **reason**:
+
+| Reason | What it is | What to do |
+|---|---|---|
+| Sound-Alike or Look-Alike | Words that sound similar when spoken | Say both words out loud and write a 3-word example for each. |
+| False Cognates | Words that look like words in your language but aren't | Check the English meaning, not your language's. |
+| Context Misfit | Real suffixes but creating nonsense words | Read the whole sentence first, then ask: does this word fit here? |
+| Collocation Confusion | Words that don't naturally go together | Learn words in pairs, like "make a decision". |
+| Partial Completion | Missing just one letter, feels almost right | Spell it letter by letter before moving on. |
+| Morphological Confusion | Common endings exploiting uncertainty | Learn the word family together: -tion, -tive, -ly… |
+
+The reason you pick most often is your **breakpoint**, the trap to work on first. It's shown with its tip and a one-click drill.
+
+![Breakpoints](docs/screenshots/breakpoints.png)
 
 ## Paste a word list
 

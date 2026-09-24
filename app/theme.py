@@ -8,22 +8,61 @@ from PySide6.QtSvg import QSvgRenderer
 
 from .paths import resource
 
-# ---- color tokens (role-based) ----
-BG = "#000000"          # AMOLED black
-SURFACE = "#0B0B0B"     # cards
-RAISED = "#141414"      # inputs, hovered rows
-HOVER = "#1C1C1C"
-BORDER = "#222222"      # hairlines
-BORDER_HI = "#3A3A3A"
-TEXT = "#FFFFFF"
-MUTED = "#9A9A9A"       # ~7:1 on black
-FAINT = "#4A4A4A"       # dots, gridlines, placeholders only
-RED = "#D71921"         # the one accent: indicators, big numbers, dots
-RED_TEXT = "#FF4D4D"    # red for small text (passes 4.5:1 on black)
-ACCENT = RED
-DANGER = RED_TEXT
-MID = "#8C8C8C"         # middle scores
-GOOD = TEXT             # high scores are plain white
+# ---- color tokens (role-based); apply() swaps them between the dark and light sets ----
+DARK = {
+    "BG": "#000000",          # AMOLED black
+    "SURFACE": "#0B0B0B",     # cards
+    "RAISED": "#141414",      # inputs, hovered rows
+    "HOVER": "#1C1C1C",
+    "BORDER": "#222222",      # hairlines
+    "BORDER_HI": "#3A3A3A",
+    "TEXT": "#FFFFFF",
+    "ON_TEXT": "#000000",     # text/icons on a TEXT-filled surface (primary buttons, white score dots)
+    "PRIMARY_HOVER": "#E6E6E6",
+    "MUTED": "#9A9A9A",       # ~7:1 on black
+    "FAINT": "#4A4A4A",       # dots, gridlines, placeholders only
+    "RED": "#D71921",         # the one accent: indicators, big numbers, dots
+    "RED_TEXT": "#FF4D4D",    # red for small text (passes 4.5:1 on black)
+    "MID": "#8C8C8C",         # middle scores
+    "GRID_ALPHA": 0.07,       # window dot grid
+}
+LIGHT = {
+    "BG": "#F2F2F2",
+    "SURFACE": "#FFFFFF",
+    "RAISED": "#ECECEC",
+    "HOVER": "#E3E3E3",
+    "BORDER": "#DADADA",
+    "BORDER_HI": "#BDBDBD",
+    "TEXT": "#000000",
+    "ON_TEXT": "#FFFFFF",
+    "PRIMARY_HOVER": "#262626",
+    "MUTED": "#5A5A5A",       # ~6.9:1 on the light background
+    "FAINT": "#B8B8B8",
+    "RED": "#D71921",
+    "RED_TEXT": "#C4101A",    # >= 5:1 on white
+    "MID": "#8C8C8C",         # fill only, always shown with its number
+    "GRID_ALPHA": 0.10,
+}
+MODE = "dark"
+# declared for readers and linters; apply() below fills them in
+(BG, SURFACE, RAISED, HOVER, BORDER, BORDER_HI, TEXT, ON_TEXT, PRIMARY_HOVER, MUTED, FAINT, RED, RED_TEXT,
+ MID, GRID_ALPHA) = (DARK[k] for k in DARK)
+ACCENT = DANGER = GOOD = CHEVRON = None
+
+
+def apply(mode: str):
+    """Switch every token to the dark or light set (widgets built afterwards pick them up)."""
+    global MODE, ACCENT, DANGER, GOOD, CHEVRON
+    MODE = "light" if mode == "light" else "dark"
+    globals().update(LIGHT if MODE == "light" else DARK)
+    ACCENT = RED
+    DANGER = RED_TEXT
+    GOOD = TEXT               # high scores are plain white (black in light mode)
+    name = "chevron-down-muted-light" if MODE == "light" else "chevron-down-muted"
+    CHEVRON = resource(f"assets/icons/{name}.svg").replace("\\", "/")
+
+
+apply("dark")
 
 FONT = "Space Grotesk"  # body
 DOT = "Doto"            # dot-matrix display
@@ -49,6 +88,15 @@ def score_color(score) -> str:
     if score >= 5:
         return MID
     return RED_TEXT
+
+
+def ink_on(fill: str) -> str:
+    """Readable text color on a filled score/accent shape."""
+    if fill in (RED, RED_TEXT):
+        return "#FFFFFF"
+    if fill == MID:
+        return "#000000"
+    return ON_TEXT if fill == TEXT else TEXT
 
 
 def score_label(score) -> str:
@@ -126,9 +174,9 @@ def icon(name: str, color: str = MUTED, size: int = 18) -> QIcon:
     return QIcon(icon_pixmap(name, color, size))
 
 
-CHEVRON = resource("assets/icons/chevron-down-muted.svg").replace("\\", "/")
-
-QSS = f"""
+def qss() -> str:
+    """The app stylesheet for the current tokens."""
+    return f"""
 * {{
     font-family: "{FONT}";
     color: {TEXT};
@@ -159,8 +207,8 @@ QPushButton:hover {{ background: {HOVER}; border-color: {MUTED}; }}
 QPushButton:pressed {{ background: {RAISED}; }}
 QPushButton:focus {{ border-color: {TEXT}; }}
 QPushButton:disabled {{ color: {FAINT}; border-color: {BORDER}; }}
-QPushButton[kind="primary"] {{ background: {TEXT}; border: 1px solid {TEXT}; color: #000000; font-weight: 600; }}
-QPushButton[kind="primary"]:hover {{ background: #E6E6E6; }}
+QPushButton[kind="primary"] {{ background: {TEXT}; border: 1px solid {TEXT}; color: {ON_TEXT}; font-weight: 600; }}
+QPushButton[kind="primary"]:hover {{ background: {PRIMARY_HOVER}; }}
 QPushButton[kind="primary"]:focus {{ border: 2px solid {RED}; }}
 QPushButton[kind="primary"]:disabled {{ background: {RAISED}; border-color: {BORDER}; color: {FAINT}; }}
 QPushButton[kind="ghost"] {{ border-color: transparent; color: {MUTED}; }}

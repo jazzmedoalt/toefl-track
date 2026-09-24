@@ -60,6 +60,8 @@ cat > "$APPDIR/usr/share/metainfo/$ID.appdata.xml" <<EOF
       <li>See your trend, streak and a score calendar by week or month</li>
       <li>Learn words with spaced-repetition flashcards, or paste a word:meaning list</li>
       <li>Quiz yourself on your own past mistakes</li>
+      <li>Tag why each answer fooled you and find your breakpoint</li>
+      <li>Dark and light mode, and a short guided tour</li>
       <li>Everything is saved in one file next to the app</li>
     </ul>
   </description>
@@ -76,6 +78,14 @@ cat > "$APPDIR/usr/share/metainfo/$ID.appdata.xml" <<EOF
       <image>$RAW/dashboard.png</image>
     </screenshot>
     <screenshot>
+      <caption>Breakpoints: the trap that catches you most</caption>
+      <image>$RAW/breakpoints.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Light mode</caption>
+      <image>$RAW/light.png</image>
+    </screenshot>
+    <screenshot>
       <caption>Score calendar</caption>
       <image>$RAW/calendar.png</image>
     </screenshot>
@@ -89,6 +99,9 @@ cat > "$APPDIR/usr/share/metainfo/$ID.appdata.xml" <<EOF
     </screenshot>
   </screenshots>
   <releases>
+    <release version="1.3.0" date="2026-09-24">
+      <description><p>Light mode, a guided tour, wrong-answer reasons and a Breakpoints page that shows the trap that catches you most.</p></description>
+    </release>
     <release version="1.2.0" date="2026-09-24">
       <description><p>Nothing OS inspired redesign, score calendar, paste flashcards as word:meaning lines, new icon.</p></description>
     </release>

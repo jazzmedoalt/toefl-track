@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLineEdit, QVBoxLayout, QW
 from .. import db
 from .. import theme as T
 from ..widgets.cards import Card, EmptyState, IconBadge, ProgressBar, button, label, shake
+from ..widgets.reasons import reason_combo, set_reason
 from ..widgets.toast import AnimatedStack
 from .base import Page, add_card_from_mistake, clear_layout
 
@@ -18,7 +19,7 @@ class QuizSetup(Page):
         super().__init__(win, "Quiz", "Test yourself on the answers you got wrong")
         self.owner = owner
         self.card = Card(padding=22)
-        self.card.setFixedWidth(640)
+        self.card.setFixedWidth(760)
         self.card.layout().addWidget(label("New quiz", "h2"))
         self.card.layout().addWidget(label(
             "You'll see your wrong answer and type the correct one. Mistakes you've never been quizzed "
@@ -30,11 +31,12 @@ class QuizSetup(Page):
         self.set_filter.setAccessibleName("Set")
         self.cat = QComboBox()
         self.cat.setAccessibleName("Mistake type")
+        self.reason = reason_combo("All reasons")
         self.count = QComboBox()
         self.count.setAccessibleName("Number of questions")
         for text, n in COUNTS:
             self.count.addItem(text, n)
-        for w in (self.set_filter, self.cat, self.count):
+        for w in (self.set_filter, self.cat, self.reason, self.count):
             w.currentIndexChanged.connect(self._update_pool)
             row.addWidget(w, 1)
         self.card.layout().addLayout(row)
@@ -74,18 +76,29 @@ class QuizSetup(Page):
 
     def _pool(self):
         return db.quiz_pool(self.set_filter.currentData(), self.cat.currentData() or "",
-                            self.count.currentData())
+                            self.count.currentData(), self.reason.currentData() or "")
 
     def _update_pool(self):
         if self._filling:
             return
-        total = len(db.quiz_pool(self.set_filter.currentData(), self.cat.currentData() or ""))
+        total = len(db.quiz_pool(self.set_filter.currentData(), self.cat.currentData() or "",
+                                 reason=self.reason.currentData() or ""))
         n = len(self._pool())
         self.pool.setText(f"{n} of {total} mistake{'s' * (total != 1)} in this quiz")
         self.start_btn.setEnabled(n > 0)
 
     def _start(self):
         self.owner.start(self._pool())
+
+    def for_reason(self, key):
+        """Reset the other filters and keep only mistakes with this reason."""
+        self.refresh()
+        self._filling = True
+        self.set_filter.setCurrentIndex(0)
+        self.cat.setCurrentIndex(0)
+        self._filling = False
+        set_reason(self.reason, key)
+        self._update_pool()
 
 
 class QuizRun(Page):
@@ -285,6 +298,15 @@ class QuizPage(QWidget):
     def refresh(self):
         if self.stack.currentWidget() is self.setup:
             self.setup.refresh()
+
+    def start_for_reason(self, key):
+        """Drill one wrong-answer reason straight away (from the Breakpoints page)."""
+        self.setup.for_reason(key)
+        items = self.setup._pool()
+        if items:
+            self.start(items)
+        else:
+            self.show_setup()
 
     def show_setup(self):
         self.setup.refresh()

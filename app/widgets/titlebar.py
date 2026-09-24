@@ -1,4 +1,4 @@
-"""Custom dark title bar for the frameless window (never follows the OS theme)."""
+"""Custom title bar for the frameless window: logo, tour and theme buttons, window controls."""
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
@@ -49,6 +49,15 @@ class TitleBar(QWidget):
         lay.addWidget(logo)
         lay.addWidget(label("TOEFL TRACK", "eyebrow"))
         lay.addStretch(1)
+        self.btn_help = _WinButton("circle-help", tip="Take the tour")
+        self.btn_theme = _WinButton("sun" if T.MODE == "dark" else "moon",
+                                    tip="Light mode" if T.MODE == "dark" else "Dark mode")
+        for b in (self.btn_help, self.btn_theme):
+            b.setFocusPolicy(Qt.TabFocus)
+            lay.addWidget(b)
+        self.btn_help.clicked.connect(window.start_tour)
+        self.btn_theme.clicked.connect(
+            lambda: window.toggle_theme(self.btn_theme.mapTo(window, self.btn_theme.rect().center())))
         self.btn_min = _WinButton("minus", tip="Minimize")
         self.btn_max = _WinButton("square", tip="Maximize")
         self.btn_close = _WinButton("x", danger=True, tip="Close")

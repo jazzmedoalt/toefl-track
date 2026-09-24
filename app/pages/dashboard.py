@@ -107,6 +107,10 @@ class DashboardPage(Page):
         self.no_cats = label("No mistakes logged yet.", "muted")
         cats.layout().addWidget(self.no_cats)
         cats.layout().addStretch(1)
+        self.bp_link = button("", "ghost", "crosshair", T.RED)
+        self.bp_link.setToolTip("Open Breakpoints")
+        self.bp_link.clicked.connect(lambda: win.go_page(win.BREAKPOINTS))
+        cats.layout().addWidget(self.bp_link, 0, Qt.AlignLeft)
         row2.addWidget(cats, 1)
         col.addLayout(row2)
         recent = Card()
@@ -153,6 +157,8 @@ class DashboardPage(Page):
         self.bars.setVisible(bool(items))
         self.no_cats.setVisible(not items)
         self.bars.set_items(items)
+        bp = db.breakpoint()
+        self.bp_link.setText(f"Breakpoint: {bp['name']} ›" if bp else "Find your breakpoint ›")
 
         clear_layout(self.recent_list)
         for r in s["recent"]:

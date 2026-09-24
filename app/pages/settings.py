@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QDateEdit, QFileDialog, QHBoxLayout, QVBoxLayout
 from .. import __version__, db
 from .. import theme as T
 from ..paths import DB_PATH
-from ..widgets.cards import Card, ScorePicker, Toggle, button, label
+from ..widgets.cards import Card, ScorePicker, Segmented, Toggle, button, label
 from .base import Page
 
 
@@ -66,6 +66,19 @@ class SettingsPage(Page):
         data.layout().addLayout(row)
         self.body.addWidget(data)
 
+        self.appearance = Card()
+        row = QHBoxLayout()
+        txt = QVBoxLayout()
+        txt.setSpacing(2)
+        txt.addWidget(label("Appearance", "h2"))
+        txt.addWidget(label("AMOLED black or clean light. Same dots either way.", "caption"))
+        row.addLayout(txt, 1)
+        self.theme_seg = Segmented(("DARK", "LIGHT"), 1 if T.MODE == "light" else 0)
+        self.theme_seg.group.idClicked.connect(self._pick_theme)
+        row.addWidget(self.theme_seg)
+        self.appearance.layout().addLayout(row)
+        self.body.addWidget(self.appearance)
+
         motion = Card()
         row = QHBoxLayout()
         txt = QVBoxLayout()
@@ -85,7 +98,11 @@ class SettingsPage(Page):
         about.layout().addWidget(label("About", "h2"))
         about.layout().addWidget(label(
             f"TOEFL Track {__version__}. Log sets, practices, scores and mistakes, learn words with "
-            "flashcards, quiz yourself, and watch your progress.\nFont: Inter (SIL OFL). Icons: Lucide (ISC).", "caption"))
+            "flashcards, quiz yourself, and watch your progress.\nFonts: Doto, Space Grotesk, Space Mono "
+            "(SIL OFL). Icons: Lucide (ISC). MIT license.", "caption"))
+        tour = button("Take the tour", None, "circle-help")
+        tour.clicked.connect(self.win.start_tour)
+        about.layout().addWidget(tour, 0, Qt.AlignLeft)
         self.body.addWidget(about)
         self.body.addStretch(1)
 
@@ -116,6 +133,10 @@ class SettingsPage(Page):
     def _save_target(self, v):
         db.set_setting("target_avg", v)
         self.win.toast(f"Target: {v}/10")
+
+    def _pick_theme(self, i):
+        btn = self.theme_seg.group.button(i)
+        self.win.set_theme("light" if i == 1 else "dark", btn.mapTo(self.win, btn.rect().center()))
 
     def _toggle_motion(self, on):
         db.set_setting("reduce_motion", "1" if on else "0")

@@ -9,6 +9,7 @@ from .. import db
 from .. import theme as T
 from ..widgets.cards import Card, EmptyState, IconBadge, ScorePicker, ScorePill, button, label
 from ..widgets.dialog import confirm
+from ..widgets.reasons import KEY_ROLE, ReasonDelegate, reason_combo, set_reason
 from ..widgets.toast import AnimatedStack
 from .base import MARGIN, Page, add_card_from_mistake, clear_layout
 
@@ -56,7 +57,7 @@ class SetsList(Page):
         self.new_name.setPlaceholderText("New set name, e.g. Set 1 or Reading Set A")
         self.new_name.setAccessibleName("New set name")
         self.new_name.returnPressed.connect(self._add)
-        add_btn = button("Add set", "primary", "plus")
+        add_btn = self.add_btn = button("Add set", "primary", "plus")
         add_btn.clicked.connect(self._add)
         add.addWidget(self.new_name, 1)
         add.addWidget(add_btn)
@@ -227,7 +228,8 @@ class SetDetail(Page):
 
 
 # ---------------------------------------------------------------- practice editor
-COLS = ("wrong", "correct", "category", "topic")
+COLS = ("wrong", "correct", "category", "reason", "topic")
+ACT = len(COLS)   # the buttons column
 
 
 class PracticeEditor(Page):
@@ -290,6 +292,7 @@ class PracticeEditor(Page):
         self.in_cat = QComboBox()
         self.in_cat.setEditable(True)
         self.in_cat.lineEdit().setPlaceholderText("Mistake type")
+        self.in_reason = reason_combo()
         self.in_topic = QLineEdit(placeholderText="Topic (optional)")
         for w, name in ((self.in_wrong, "Wrong answer"), (self.in_correct, "Correct answer"),
                         (self.in_cat, "Mistake type"), (self.in_topic, "Topic")):
@@ -298,17 +301,24 @@ class PracticeEditor(Page):
         add_btn.clicked.connect(self._add_mistake)
         for w in (self.in_wrong, self.in_correct, self.in_topic, self.in_cat.lineEdit()):
             w.returnPressed.connect(self._add_mistake)
-        entry.addWidget(self.in_wrong, 3)
-        entry.addWidget(self.in_correct, 3)
-        entry.addWidget(self.in_cat, 2)
-        entry.addWidget(self.in_topic, 2)
-        entry.addWidget(add_btn)
+        entry.addWidget(self.in_wrong, 1)
+        entry.addWidget(self.in_correct, 1)
         mc.layout().addLayout(entry)
+        entry2 = QHBoxLayout()   # second row: why it went wrong
+        entry2.setSpacing(8)
+        entry2.addWidget(self.in_cat, 2)
+        entry2.addWidget(self.in_reason, 3)
+        entry2.addWidget(self.in_topic, 2)
+        entry2.addWidget(add_btn)
+        mc.layout().addLayout(entry2)
 
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["Wrong", "Correct", "Type", "Topic", ""])
+        self.table = QTableWidget(0, ACT + 1)
+        self.table.setHorizontalHeaderLabels(["Wrong", "Correct", "Type", "Reason", "Topic", ""])
+        self.table.setItemDelegateForColumn(COLS.index("reason"), ReasonDelegate(self.table))
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
+        self.table.setWordWrap(False)
+        self.table.setTextElideMode(Qt.ElideRight)
         self.table.setFocusPolicy(Qt.StrongFocus)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.DoubleClicked | QAbstractItemView.EditKeyPressed)
@@ -317,10 +327,10 @@ class PracticeEditor(Page):
         hh = self.table.horizontalHeader()
         hh.setHighlightSections(False)
         hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        for i, mode in enumerate((QHeaderView.Stretch, QHeaderView.Stretch, QHeaderView.Stretch,
-                                  QHeaderView.Stretch, QHeaderView.Fixed)):
-            hh.setSectionResizeMode(i, mode)
-        hh.resizeSection(4, 80)
+        for i in range(ACT):
+            hh.setSectionResizeMode(i, QHeaderView.Stretch)
+        hh.setSectionResizeMode(ACT, QHeaderView.Fixed)
+        hh.resizeSection(ACT, 80)
         self.table.itemChanged.connect(self._cell_changed)
         mc.layout().addWidget(self.table)
         self.no_mistakes = label("No mistakes logged yet. A perfect score, or just getting started?",
@@ -386,8 +396,14 @@ class PracticeEditor(Page):
         r = self.table.rowCount()
         self.table.insertRow(r)
         for c, key in enumerate(COLS):
-            it = QTableWidgetItem(m[key])
+            it = QTableWidgetItem(db.reason_name(m[key]) if key == "reason" else m[key])
             it.setData(Qt.UserRole, m["id"])
+            if key == "reason":
+                it.setData(KEY_ROLE, m[key])
+                it.setForeground(QColor(T.MUTED))
+                it.setToolTip(db.REASON[m[key]]["desc"] if m[key] in db.REASON else "Double-click to pick a reason")
+                if m[key] in db.REASON:
+                    it.setIcon(T.icon(db.REASON[m[key]]["icon"], T.MUTED, 16))
             if key == "wrong":
                 it.setForeground(QColor(T.DANGER))
             elif key == "correct":
@@ -410,7 +426,7 @@ class PracticeEditor(Page):
         hl.setSpacing(2)
         hl.addWidget(fc, 0, Qt.AlignCenter)
         hl.addWidget(b, 0, Qt.AlignCenter)
-        self.table.setCellWidget(r, 4, host)
+        self.table.setCellWidget(r, ACT, host)
 
     def _fit_table(self):
         n = self.table.rowCount()
@@ -459,14 +475,17 @@ class PracticeEditor(Page):
             self.in_wrong.setFocus()
             self.win.toast("Type the wrong answer or the correct one first")
             return
-        mid = db.add_mistake(self.pid, wrong, correct, cat, topic)
+        reason = self.in_reason.currentData() or ""
+        mid = db.add_mistake(self.pid, wrong, correct, cat, topic, reason)
         self.table.blockSignals(True)  # new mistake: never has a card yet
-        self._append_row({"id": mid, "wrong": wrong, "correct": correct, "category": cat, "topic": topic})
+        self._append_row({"id": mid, "wrong": wrong, "correct": correct, "category": cat, "topic": topic,
+                          "reason": reason})
         self.table.blockSignals(False)
         self._fit_table()
         self.in_wrong.clear()
         self.in_correct.clear()
         self.in_topic.clear()
+        set_reason(self.in_reason, "")   # reasons differ word to word; the type usually doesn't
         if cat and self.in_cat.findText(cat) < 0:
             self.in_cat.addItem(cat)
         self.in_cat.setEditText(cat)   # keep type: mistakes often come in runs of the same type
@@ -475,7 +494,9 @@ class PracticeEditor(Page):
 
     def _cell_changed(self, it):
         if it.column() < len(COLS):
-            db.update_mistake(it.data(Qt.UserRole), COLS[it.column()], it.text().strip())
+            key = COLS[it.column()]
+            value = (it.data(KEY_ROLE) or "") if key == "reason" else it.text().strip()
+            db.update_mistake(it.data(Qt.UserRole), key, value)
             self.win.toast("Saved", 900)
 
     def _to_card(self, mid):

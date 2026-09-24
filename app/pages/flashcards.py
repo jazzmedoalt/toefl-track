@@ -72,7 +72,7 @@ class WordList(Page):
     def __init__(self, win, owner):
         super().__init__(win, "Flashcards", "", scroll=False)
         self.owner = owner
-        paste = self.add_action(button("Paste list", None, "copy"))
+        paste = self.paste_btn = self.add_action(button("Paste list", None, "copy"))
         paste.setToolTip("Import many cards at once as word:meaning lines")
         paste.clicked.connect(self._paste)
         self.study_all = self.add_action(button("Study all", None, "shuffle"))
@@ -223,8 +223,10 @@ class WordList(Page):
 
 
 # ---------------------------------------------------------------- review session
-GRADES = ((db.AGAIN, "Again", T.RED_TEXT), (db.HARD, "Hard", T.MID),
-          (db.GOOD, "Good", T.TEXT), (db.EASY, "Easy", T.TEXT))
+def grade_buttons():
+    """(grade, name, color); read at build time so the colors follow the theme."""
+    return ((db.AGAIN, "Again", T.RED_TEXT), (db.HARD, "Hard", T.MID),
+            (db.GOOD, "Good", T.TEXT), (db.EASY, "Easy", T.TEXT))
 
 
 class Review(Page):
@@ -265,7 +267,7 @@ class Review(Page):
         gl.setSpacing(10)
         gl.addStretch(1)
         self.grade_btns = []
-        for i, (g, name, color) in enumerate(GRADES):
+        for i, (g, name, color) in enumerate(grade_buttons()):
             b = button(f"{name}   {i + 1}")
             b.setMinimumWidth(120)
             c = QColor(color)
@@ -299,12 +301,12 @@ class Review(Page):
         self.done_text.setAlignment(Qt.AlignCenter)
         dl.addWidget(self.done_text)
         dl.addSpacing(10)
-        back2 = button("Back to words", "primary", "chevron-left", "#FFFFFF")
+        back2 = button("Back to words", "primary", "chevron-left")
         back2.clicked.connect(owner.show_list)
         dl.addWidget(back2, 0, Qt.AlignHCenter)
         self.stack.addWidget(done)
 
-        for i, (g, _, _) in enumerate(GRADES):
+        for i, (g, _, _) in enumerate(grade_buttons()):
             sc = QShortcut(QKeySequence(str(i + 1)), self)
             sc.setContext(Qt.WidgetWithChildrenShortcut)
             sc.activated.connect(lambda g=g: self.grade(g) if self.card.is_back() else None)

@@ -5,7 +5,7 @@ import math
 from PySide6.QtCore import (QEasingCurve, QPoint, QPointF, QPropertyAnimation, QRectF, QSize, Qt,
                             QVariantAnimation, Signal)
 from PySide6.QtGui import QColor, QFont, QPainter, QPen
-from PySide6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel, QPushButton,
+from PySide6.QtWidgets import (QAbstractButton, QButtonGroup, QFrame, QHBoxLayout, QLabel, QPushButton,
                                QSizePolicy, QVBoxLayout, QWidget)
 
 from .. import theme as T
@@ -23,7 +23,7 @@ def button(text="", kind=None, icon_name=None, icon_color=None, parent=None) -> 
     if kind:
         b.setProperty("kind", kind)
     if icon_name:
-        color = icon_color or ("#000000" if kind == "primary" else T.MUTED)
+        color = icon_color or (T.ON_TEXT if kind == "primary" else T.MUTED)
         b.setIcon(T.icon(icon_name, color, 16))
         b.setIconSize(QSize(16, 16))
     b.setCursor(Qt.PointingHandCursor)
@@ -404,8 +404,8 @@ class ScorePicker(QWidget):
         p.setFont(T.mono_font(13, 0))
         for i in range(11):
             selected = self._value is not None and abs(self._pos - i) < 0.5
-            dark = selected and T.score_color(i) != T.RED_TEXT
-            p.setPen(QColor("#000000" if dark else T.TEXT if selected or i == self._hover else T.MUTED))
+            ink = T.ink_on(T.score_color(i)) if selected else T.TEXT if i == self._hover else T.MUTED
+            p.setPen(QColor(ink))
             c = self._center(i)
             p.drawText(QRectF(c.x() - rad, c.y() - rad, 2 * rad, 2 * rad), Qt.AlignCenter, str(i))
 
@@ -577,3 +577,31 @@ def shake(widget):
     for i, dx in enumerate((0, -8, 8, -6, 6, -3, 3, 0)):
         a.setKeyValueAt(i / 7, start + QPoint(dx, 0))
     a.start(QPropertyAnimation.DeleteWhenStopped)
+
+
+class Segmented(QWidget):
+    """Pill-shaped segmented control (e.g. MONTH | WEEK). `group.idClicked` fires with the index."""
+
+    def __init__(self, items, current=0, parent=None):
+        super().__init__(parent)
+        self.setObjectName("Seg")
+        self.setAttribute(Qt.WA_StyledBackground)
+        self.setStyleSheet(f"QWidget#Seg {{ border: 1px solid {T.BORDER_HI}; border-radius: 17px; }}")
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(3, 3, 3, 3)
+        lay.setSpacing(2)
+        self.group = QButtonGroup(self)
+        for i, text in enumerate(items):
+            b = QPushButton(text)
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setAccessibleName(text.title())
+            b.setStyleSheet(
+                f"QPushButton {{ border: none; border-radius: 14px; padding: 5px 16px; min-height: 18px;"
+                f" color: {T.MUTED}; font-family: \"{T.MONO}\"; font-size: 12px; letter-spacing: 1px; }}"
+                f"QPushButton:hover {{ color: {T.TEXT}; }}"
+                f"QPushButton:focus {{ border: 1px solid {T.RED}; }}"
+                f"QPushButton:checked {{ background: {T.TEXT}; color: {T.ON_TEXT}; }}")
+            self.group.addButton(b, i)
+            lay.addWidget(b)
+        self.group.button(current).setChecked(True)
