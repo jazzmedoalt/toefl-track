@@ -244,7 +244,7 @@ class QuizSummary(Page):
         clear_layout(self.badge_host)
         good = ok / n >= 0.8
         self.badge_host.addWidget(IconBadge("circle-check" if good else "target",
-                                            T.GOOD if good else T.WARN, 56))
+                                            T.TEXT if good else T.RED, 56))
         self.score.setText(f"{ok} / {n} correct")
         self.note.setText("Excellent. These are sticking." if good else
                           "Good practice. Retry the missed ones while they're fresh.")

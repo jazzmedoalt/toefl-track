@@ -1,8 +1,8 @@
-"""QPainter charts: score-trend area chart and a GitHub-style activity heatmap."""
+"""QPainter charts in dots: score trend (a trail of dots) and a GitHub-style activity heatmap."""
 from datetime import date, timedelta
 
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QToolTip, QWidget
 
 from .. import theme as T
@@ -65,23 +65,19 @@ class TrendChart(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
         r = self._plot()
-        f = QFont(T.FONT)
-        f.setPixelSize(11)
-        p.setFont(f)
+        p.setFont(T.mono_font(10, 0))
 
-        # grid + y labels
+        # dotted grid + y labels
         for v in (0, 5, 10):
             y = r.bottom() - r.height() * v / 10
-            p.setPen(QPen(QColor(T.BORDER), 1, Qt.DashLine if v else Qt.SolidLine))
-            p.drawLine(QPointF(r.left(), y), QPointF(r.right(), y))
-            p.setPen(QColor(T.FAINT))
+            T.dotted_hline(p, r.left(), r.right(), y, T.BORDER_HI if v == 0 else T.FAINT, 7, 0.9)
+            p.setPen(QColor(T.MUTED))
             p.drawText(QRectF(0, y - 8, PAD_L - 8, 16), Qt.AlignRight | Qt.AlignVCenter, str(v))
 
         n = len(self._points)
         if n < 2:
             p.setPen(QColor(T.MUTED))
-            f.setPixelSize(13)
-            p.setFont(f)
+            p.setFont(T.font(13))
             p.drawText(r, Qt.AlignCenter, "Score at least 2 practices to see your trend")
             return
 
@@ -91,65 +87,52 @@ class TrendChart(QWidget):
             mx = (a.x() + b.x()) / 2
             line.cubicTo(QPointF(mx, a.y()), QPointF(mx, b.y()), b)
 
-        # reveal left→right
+        # the line itself is drawn as a trail of dots, revealed left→right
         p.save()
         p.setClipRect(QRectF(0, 0, r.left() + (r.width() + 8) * self._t, self.height()))
-        area = QPainterPath(line)
-        area.lineTo(pts[-1].x(), r.bottom())
-        area.lineTo(pts[0].x(), r.bottom())
-        area.closeSubpath()
-        g = QLinearGradient(0, r.top(), 0, r.bottom())
-        top = QColor(T.ACCENT)
-        top.setAlphaF(0.30)
-        bottom = QColor(T.ACCENT)
-        bottom.setAlphaF(0.0)
-        g.setColorAt(0, top)
-        g.setColorAt(1, bottom)
-        p.fillPath(area, g)
-        lg = QLinearGradient(r.left(), 0, r.right(), 0)
-        lg.setColorAt(0, QColor(T.ACCENT))
-        lg.setColorAt(1, QColor(T.ACCENT_2))
-        p.setPen(QPen(lg, 2.5, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        p.setBrush(Qt.NoBrush)
-        p.drawPath(line)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(T.TEXT))
+        length = line.length()
+        steps = max(2, int(length / 6))
+        for k in range(steps + 1):
+            p.drawEllipse(line.pointAtPercent(line.percentAtLength(length * k / steps)), 1.4, 1.4)
         for i, pt in enumerate(pts):
-            p.setPen(QPen(QColor(T.SURFACE), 2))
-            p.setBrush(QColor(T.score_color(self._points[i]["score"])))
-            p.drawEllipse(pt, 4.5 if i == self._hover else 3.5, 4.5 if i == self._hover else 3.5)
+            s = self._points[i]["score"]
+            big = 5.5 if i == self._hover else 4.5
+            p.setPen(QPen(QColor(T.BG), 2))
+            p.setBrush(QColor(T.RED if s < 5 else T.TEXT))
+            p.drawEllipse(pt, big, big)
         p.restore()
 
         # x labels: first / last
-        p.setPen(QColor(T.FAINT))
-        p.drawText(QRectF(r.left() - 20, r.bottom() + 6, 120, 16), Qt.AlignLeft, "first")
-        p.drawText(QRectF(r.right() - 100, r.bottom() + 6, 100, 16), Qt.AlignRight, "latest")
+        p.setFont(T.mono_font(10, 1))
+        p.setPen(QColor(T.MUTED))
+        p.drawText(QRectF(r.left() - 20, r.bottom() + 6, 120, 16), Qt.AlignLeft, "FIRST")
+        p.drawText(QRectF(r.right() - 100, r.bottom() + 6, 100, 16), Qt.AlignRight, "LATEST")
 
         # hover tooltip
         if 0 <= self._hover < n:
             d = self._points[self._hover]
             pt = pts[self._hover]
-            p.setPen(QPen(QColor(T.BORDER_HI), 1, Qt.DashLine))
+            p.setPen(QPen(QColor(T.BORDER_HI), 1, Qt.DotLine))
             p.drawLine(QPointF(pt.x(), r.top()), QPointF(pt.x(), r.bottom()))
-            title = f"{d['score']}/10"
             sub = f"{d['set_name']} · {d['name']}"
-            f.setPixelSize(12)
-            p.setFont(f)
-            w = max(p.fontMetrics().horizontalAdvance(sub), 40) + 20
-            box = QRectF(pt.x() + 10, pt.y() - 50, w, 42)
+            p.setFont(T.font(12))
+            w = max(p.fontMetrics().horizontalAdvance(sub), 60) + 24
+            box = QRectF(pt.x() + 10, pt.y() - 56, w, 48)
             if box.right() > self.width() - 4:
                 box.moveRight(pt.x() - 10)
             if box.top() < 2:
                 box.moveTop(pt.y() + 10)
             p.setPen(QPen(QColor(T.BORDER_HI), 1))
             p.setBrush(QColor(T.RAISED))
-            p.drawRoundedRect(box, 8, 8)
+            p.drawRoundedRect(box, 10, 10)
             p.setPen(QColor(T.score_color(d["score"])))
-            f.setWeight(QFont.DemiBold)
-            p.setFont(f)
-            p.drawText(box.adjusted(10, 5, -10, -20), Qt.AlignLeft | Qt.AlignVCenter, title)
+            p.setFont(T.dot_font(20))
+            p.drawText(box.adjusted(12, 4, -12, -22), Qt.AlignLeft | Qt.AlignVCenter, f"{d['score']}/10")
             p.setPen(QColor(T.MUTED))
-            f.setWeight(QFont.Normal)
-            p.setFont(f)
-            p.drawText(box.adjusted(10, 20, -10, -4), Qt.AlignLeft | Qt.AlignVCenter, sub)
+            p.setFont(T.font(12))
+            p.drawText(box.adjusted(12, 24, -12, -4), Qt.AlignLeft | Qt.AlignVCenter, sub)
 
 
 class ActivityHeatmap(QWidget):
@@ -229,12 +212,10 @@ class ActivityHeatmap(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        f = QFont(T.FONT)
-        f.setPixelSize(10)
-        p.setFont(f)
+        p.setFont(T.mono_font(9, 0.5))
         start, today = self._start(), date.today()
         p.setPen(QColor(T.FAINT))
-        for row, name in ((0, "Mon"), (2, "Wed"), (4, "Fri")):
+        for row, name in ((0, "MON"), (2, "WED"), (4, "FRI")):
             p.drawText(QRectF(0, self._cell_rect(0, row).top() - 2, self.LEFT - 6, self.CELL + 4),
                        Qt.AlignRight | Qt.AlignVCenter, name)
         last_month = None
@@ -244,30 +225,35 @@ class ActivityHeatmap(QWidget):
                 last_month = d0.month
                 if col < self._weeks - 2:
                     p.setPen(QColor(T.FAINT))
-                    p.drawText(QRectF(self._cell_rect(col, 0).left(), 0, 40, 14), Qt.AlignLeft, d0.strftime("%b"))
+                    p.drawText(QRectF(self._cell_rect(col, 0).left(), 0, 40, 14), Qt.AlignLeft, d0.strftime("%b").upper())
             alpha = max(0.0, min(1.0, (self._t * (self._weeks + 6) - col) / 6))
             for row in range(7):
                 d = d0 + timedelta(days=row)
                 if d > today:
                     continue
                 lvl = self._level(self._days.get(d.isoformat()))
-                c = QColor(T.RAISED) if lvl == 0 else T.mix(T.SURFACE, T.ACCENT if lvl < 4 else T.ACCENT_2,
-                                                             (0.35, 0.6, 0.85, 1.0)[lvl - 1])
-                c.setAlphaF(alpha)
-                p.setPen(QPen(QColor(T.ACCENT_2), 1.2) if d == today else Qt.NoPen)
-                p.setBrush(c)
-                p.drawRoundedRect(self._cell_rect(col, row), 3, 3)
+                self._dot(p, self._cell_rect(col, row), lvl, alpha, d == today)
         # legend
         y = self.TOP + 7 * (self.CELL + self.GAP) + 6
         x = self.LEFT + self._weeks * (self.CELL + self.GAP) - 5 * (self.CELL + self.GAP) - 34
-        p.setPen(QColor(T.FAINT))
-        p.drawText(QRectF(x - 34, y - 1, 30, self.CELL + 2), Qt.AlignRight | Qt.AlignVCenter, "Less")
+        p.setPen(QColor(T.MUTED))
+        p.drawText(QRectF(x - 40, y - 1, 36, self.CELL + 2), Qt.AlignRight | Qt.AlignVCenter, "LESS")
         for i in range(5):
-            c = QColor(T.RAISED) if i == 0 else T.mix(T.SURFACE, T.ACCENT if i < 4 else T.ACCENT_2,
-                                                     (0.35, 0.6, 0.85, 1.0)[i - 1])
-            p.setPen(Qt.NoPen)
-            p.setBrush(c)
-            p.drawRoundedRect(QRectF(x + i * (self.CELL + self.GAP), y, self.CELL, self.CELL), 3, 3)
-        p.setPen(QColor(T.FAINT))
-        p.drawText(QRectF(x + 5 * (self.CELL + self.GAP) + 2, y - 1, 34, self.CELL + 2),
-                   Qt.AlignLeft | Qt.AlignVCenter, "More")
+            self._dot(p, QRectF(x + i * (self.CELL + self.GAP), y, self.CELL, self.CELL), i, 1.0, False)
+        p.setPen(QColor(T.MUTED))
+        p.drawText(QRectF(x + 5 * (self.CELL + self.GAP) + 2, y - 1, 40, self.CELL + 2),
+                   Qt.AlignLeft | Qt.AlignVCenter, "MORE")
+
+    @staticmethod
+    def _dot(p, cell, lvl, alpha, today):
+        """Empty days are tiny grey dots; active days grow and brighten to white. Today is ringed red."""
+        c = QColor(T.FAINT) if lvl == 0 else T.mix(T.BORDER_HI, T.TEXT, (0.35, 0.6, 0.85, 1.0)[lvl - 1])
+        c.setAlphaF(alpha)
+        rad = (2.0, 3.6, 4.6, 5.6, 6.5)[lvl]
+        p.setPen(Qt.NoPen)
+        p.setBrush(c)
+        p.drawEllipse(cell.center(), rad, rad)
+        if today:
+            p.setPen(QPen(QColor(T.RED), 1.4))
+            p.setBrush(Qt.NoBrush)
+            p.drawEllipse(cell.center(), cell.width() / 2 + 0.5, cell.width() / 2 + 0.5)

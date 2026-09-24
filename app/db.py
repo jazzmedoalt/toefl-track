@@ -256,6 +256,52 @@ def list_cards(search=""):
     return _all(sql + " ORDER BY due, id", args)
 
 
+def parse_card_lines(text):
+    """Parse 'word:meaning' lines. Returns (pairs, problems) where problems are (line_no, reason)."""
+    pairs, problems = [], []
+    for n, raw in enumerate((text or "").splitlines(), 1):
+        line = raw.strip().replace("：", ":")
+        if not line:
+            continue
+        if ":" not in line:
+            problems.append((n, "no colon"))
+            continue
+        word, meaning = (x.strip() for x in line.split(":", 1))
+        if not word:
+            problems.append((n, "no word before the colon"))
+            continue
+        pairs.append((word, meaning))
+    return pairs, problems
+
+
+def existing_words():
+    return {r["word"].lower(): r["id"] for r in _all("SELECT id, word FROM cards")}
+
+
+def import_cards(pairs, update_existing=False):
+    """Add pasted cards. Existing words (case-insensitive) are skipped, or get their meaning updated.
+    Returns (added, updated, skipped)."""
+    have = existing_words()
+    added = updated = skipped = 0
+    seen = set()
+    for word, meaning in pairs:
+        key = word.lower()
+        if key in seen:
+            skipped += 1
+            continue
+        seen.add(key)
+        if key in have:
+            if update_existing and meaning:
+                update_card(have[key], "meaning", meaning)
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            add_card(word, meaning)
+            added += 1
+    return added, updated, skipped
+
+
 def get_card(cid):
     rows = _all("SELECT * FROM cards WHERE id=?", (cid,))
     return rows[0] if rows else None
@@ -381,6 +427,21 @@ def exam():
     avg = sum(recent) / len(recent) if recent else None
     return {"date": raw, "days_left": days_left, "target": target, "recent_avg": avg,
             "gap": None if avg is None else max(0.0, target - avg)}
+
+
+def scores_by_day(start, end):
+    """{iso_day: [{id, name, score, set_name}]} for practices dated start..end (inclusive)."""
+    out = {}
+    for r in _all("""SELECT p.id, p.name, p.score, p.date, s.name AS set_name FROM practices p
+                     JOIN sets s ON s.id = p.set_id WHERE p.date BETWEEN ? AND ?
+                     ORDER BY p.date, p.id""", (str(start), str(end))):
+        out.setdefault(r["date"], []).append(r)
+    return out
+
+
+def day_average(items):
+    scored = [i["score"] for i in items if i["score"] is not None]
+    return sum(scored) / len(scored) if scored else None
 
 
 def export_csv(path):

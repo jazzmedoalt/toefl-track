@@ -41,10 +41,10 @@ class DashboardPage(Page):
         self.exam = Card(padding=14)
         el = QHBoxLayout()
         el.setSpacing(14)
-        el.addWidget(IconBadge("calendar-days", T.ACCENT_2, 40))
+        el.addWidget(IconBadge("calendar-days", T.RED, 40))
         et = QVBoxLayout()
         et.setSpacing(2)
-        self.exam_title = label("", "h2")
+        self.exam_title = label("", "display-sm")
         self.exam_sub = label("", "caption")
         et.addWidget(self.exam_title)
         et.addWidget(self.exam_sub)
@@ -63,10 +63,10 @@ class DashboardPage(Page):
 
         grid = QGridLayout()
         grid.setSpacing(14)
-        self.c_streak = StatCard("Streak", "flame", T.WARN)
-        self.c_practices = StatCard("Practices", "file-text", T.ACCENT)
-        self.c_avg = StatCard("Average", "target", T.ACCENT_2)
-        self.c_due = StatCard("Cards due", "sparkles", T.GOOD, clickable=True)
+        self.c_streak = StatCard("Streak", "flame", T.RED)
+        self.c_practices = StatCard("Practices", "file-text", T.MUTED)
+        self.c_avg = StatCard("Average", "target", T.MUTED)
+        self.c_due = StatCard("Cards due", "sparkles", T.MUTED, clickable=True)
         self.c_due.setToolTip("Open flashcards")
         self.c_due.clicked.connect(lambda: win.go_page(win.FLASHCARDS))
         for i, c in enumerate((self.c_streak, self.c_practices, self.c_avg, self.c_due)):
@@ -175,10 +175,10 @@ class DashboardPage(Page):
         self.exam_sub.setText(f"Target average {target}/10 · your last 5 practices: {avg:.1f}")
         if e["gap"] <= 0:
             self.exam_status.setText("On track ✓")
-            self.exam_status.setStyleSheet(f"color: {T.GOOD}; font-weight: 600;")
+            self.exam_status.setStyleSheet(f"color: {T.TEXT}; font-family: '{T.MONO}';")
         else:
             self.exam_status.setText(f"{e['gap']:.1f} to go")
-            self.exam_status.setStyleSheet(f"color: {T.WARN}; font-weight: 600;")
+            self.exam_status.setStyleSheet(f"color: {T.RED_TEXT}; font-family: '{T.MONO}';")
         self.exam_bar.set_value(min(1.0, avg / target) if target else 1.0)
 
     def _recent_row(self, r):

@@ -1,6 +1,6 @@
 """Navigation rail with a sliding active-item pill."""
-from PySide6.QtCore import QEasingCurve, QRectF, QSize, Qt, QVariantAnimation, Signal
-from PySide6.QtGui import QColor, QLinearGradient, QPainter
+from PySide6.QtCore import QEasingCurve, QPointF, QRectF, QSize, Qt, QVariantAnimation, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import QPushButton, QVBoxLayout, QWidget
 
 from .. import theme as T
@@ -9,18 +9,19 @@ from .cards import label
 
 class _NavButton(QPushButton):
     def __init__(self, text, icon_name, parent=None):
-        super().__init__(text, parent)
+        super().__init__("  " + text, parent)  # breathing room between icon and dot text
         self.icon_name = icon_name
         self.setCheckable(True)
         self.setFocusPolicy(Qt.TabFocus)  # keyboard focus ring only, not after mouse clicks
         self.setCursor(Qt.PointingHandCursor)
         self.setIconSize(QSize(18, 18))
         self.setStyleSheet(
-            f"QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 9px;"
-            f" text-align: left; padding: 0 12px; min-height: 36px; max-height: 36px; color: {T.MUTED}; font-weight: 500; }}"
+            f"QPushButton {{ background: transparent; border: 1px solid transparent; border-radius: 18px;"
+            f" text-align: left; padding: 0 12px; min-height: 36px; max-height: 36px; color: {T.MUTED};"
+            f" font-family: \"{T.DOT}\"; font-size: 16px; font-weight: 900; }}"
             f"QPushButton:hover {{ color: {T.TEXT}; background: rgba(255,255,255,0.03); }}"
             f"QPushButton:checked {{ color: {T.TEXT}; background: transparent; }}"
-            f"QPushButton[kbd=\"true\"]:focus {{ border-color: {T.ACCENT}; }}")
+            f"QPushButton[kbd=\"true\"]:focus {{ border-color: {T.RED}; }}")
         self.refresh_icon()
         self.toggled.connect(lambda _: self.refresh_icon())
 
@@ -31,7 +32,7 @@ class _NavButton(QPushButton):
         super().focusInEvent(e)
 
     def refresh_icon(self):
-        self.setIcon(T.icon(self.icon_name, T.ACCENT if self.isChecked() else T.MUTED, 18))
+        self.setIcon(T.icon(self.icon_name, T.TEXT if self.isChecked() else T.MUTED, 18))
 
 
 class Sidebar(QWidget):
@@ -39,7 +40,7 @@ class Sidebar(QWidget):
 
     def __init__(self, items, parent=None):
         super().__init__(parent)
-        self.setFixedWidth(196)
+        self.setFixedWidth(204)
         lay = QVBoxLayout(self)
         lay.setContentsMargins(12, 8, 12, 14)
         lay.setSpacing(4)
@@ -52,7 +53,8 @@ class Sidebar(QWidget):
             lay.addWidget(b)
             self.buttons.append(b)
         lay.addStretch(1)
-        foot = label("Saved automatically\non this computer", "caption")
+        foot = label("● SAVED LOCALLY", "eyebrow")
+        foot.setToolTip("Everything is saved automatically on this computer")
         lay.addWidget(foot)
 
         self._pill = QRectF()
@@ -93,14 +95,9 @@ class Sidebar(QWidget):
     def paintEvent(self, _):
         p = QPainter(self)
         p.setRenderHint(QPainter.Antialiasing)
-        p.fillRect(self.rect(), QColor(T.BG))
         if not self._pill.isNull():
             p.setPen(Qt.NoPen)
             p.setBrush(QColor(T.RAISED))
-            p.drawRoundedRect(self._pill, 9, 9)
-            bar = QRectF(self._pill.left() + 4, self._pill.top() + 11, 3, self._pill.height() - 22)
-            g = QLinearGradient(0, bar.top(), 0, bar.bottom())
-            g.setColorAt(0, QColor(T.ACCENT))
-            g.setColorAt(1, QColor(T.ACCENT_2))
-            p.setBrush(g)
-            p.drawRoundedRect(bar, 1.5, 1.5)
+            p.drawRoundedRect(self._pill, self._pill.height() / 2, self._pill.height() / 2)
+            p.setBrush(QColor(T.RED))
+            p.drawEllipse(QPointF(self._pill.right() - 16, self._pill.center().y()), 3.5, 3.5)

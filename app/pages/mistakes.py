@@ -14,7 +14,7 @@ class MistakesPage(Page):
         super().__init__(win, "Mistakes", "Every wrong answer in one place. Review these before the test.",
                          scroll=False)
         self.count = self.add_action(label("", "muted"))
-        self.card_btn = self.add_action(button("Add to flashcards", None, "sparkles", T.ACCENT))
+        self.card_btn = self.add_action(button("Add to flashcards", None, "sparkles", T.RED))
         self.card_btn.setToolTip("Turn the selected mistake into a flashcard")
         self.card_btn.clicked.connect(self._card_selected)
 
@@ -100,7 +100,7 @@ class MistakesPage(Page):
         self._rows = rows
         self._carded = db.card_mistake_ids()
         self.table.setRowCount(len(rows))
-        colors = {0: T.DANGER, 1: T.GOOD, 2: T.ACCENT}
+        colors = {0: T.DANGER, 1: T.GOOD, 2: T.MUTED}
         for r, m in enumerate(rows):
             vals = (m["wrong"], m["correct"], m["category"], m["topic"],
                     f"{m['set_name']} · {m['practice_name']}")
@@ -111,7 +111,7 @@ class MistakesPage(Page):
                 it.setForeground(QColor(colors.get(c, T.MUTED if c == 4 else T.TEXT)))
                 self.table.setItem(r, c, it)
             if m["id"] in self._carded:
-                self.table.item(r, 0).setIcon(T.icon("sparkles", T.ACCENT, 14))
+                self.table.item(r, 0).setIcon(T.icon("sparkles", T.RED, 14))
                 self.table.item(r, 0).setToolTip("In flashcards")
         self._update_card_btn()
 
@@ -141,7 +141,7 @@ class MistakesPage(Page):
         m = self._rows[row]
         menu = QMenu(self)
         a_open = menu.addAction(T.icon("file-text", T.MUTED, 16), "Open practice")
-        a_card = menu.addAction(T.icon("sparkles", T.ACCENT, 16), "Add to flashcards")
+        a_card = menu.addAction(T.icon("sparkles", T.RED, 16), "Add to flashcards")
         a_card.setEnabled(m["id"] not in self._carded)
         chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
         if chosen is a_open:

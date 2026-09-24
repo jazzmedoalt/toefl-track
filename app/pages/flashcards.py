@@ -9,11 +9,51 @@ from PySide6.QtWidgets import (QAbstractItemView, QHBoxLayout, QHeaderView, QLin
 from .. import db
 from .. import theme as T
 from ..widgets.cards import Card, EmptyState, FlipCard, IconBadge, ProgressBar, button, label
-from ..widgets.dialog import confirm
+from ..widgets.dialog import ImportDialog, confirm
 from ..widgets.toast import AnimatedStack
 from .base import Page
 
 EDITABLE = ("word", "meaning", "example", "synonyms")
+
+AI_PROMPT = """Turn the words below into TOEFL flashcards.
+Output ONLY lines in this exact format, one per line:
+word:meaning
+No numbering, bullets, quotes, headings or extra text.
+Keep each meaning short and simple (under 12 words).
+If I already gave a meaning for a word, keep it.
+Example:
+car:vehicle you use to transport
+lie:you don't say the right thing
+
+Words:
+"""
+
+
+def import_preview(text, update_existing):
+    """Summary line for the paste dialog, and whether there's anything to import."""
+    pairs, problems = db.parse_card_lines(text)
+    if not pairs and not problems:
+        return "Paste your list above to see a preview.", False
+    have = db.existing_words()
+    seen, new, existing = set(), 0, 0
+    for w, _ in pairs:
+        k = w.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        if k in have:
+            existing += 1
+        else:
+            new += 1
+    parts = [f"{new} new card{'s' * (new != 1)}"]
+    if existing:
+        parts.append(f"{existing} already exist{'s' * (existing == 1)}"
+                     + (" (meaning will be updated)" if update_existing else " (skipped)"))
+    if problems:
+        shown = ", ".join(f"line {n}: {why}" for n, why in problems[:3])
+        more = f" +{len(problems) - 3} more" if len(problems) > 3 else ""
+        parts.append(f"skipped {shown}{more}")
+    return " · ".join(parts), bool(new or (existing and update_existing))
 
 
 def due_text(due: str) -> str:
@@ -32,6 +72,9 @@ class WordList(Page):
     def __init__(self, win, owner):
         super().__init__(win, "Flashcards", "", scroll=False)
         self.owner = owner
+        paste = self.add_action(button("Paste list", None, "copy"))
+        paste.setToolTip("Import many cards at once as word:meaning lines")
+        paste.clicked.connect(self._paste)
         self.study_all = self.add_action(button("Study all", None, "shuffle"))
         self.study_all.setToolTip("Review every card now, even ones not due yet")
         self.study_all.clicked.connect(lambda: owner.start(all_cards=True))
@@ -86,8 +129,8 @@ class WordList(Page):
         card.layout().addWidget(self.table)
         self.stack.addWidget(card)
         self.empty = EmptyState("sparkles", "No flashcards yet",
-                                "Type a word and its meaning above and press Enter, or use "
-                                "“Add to flashcards” on any mistake.")
+                                "Type a word and its meaning above, paste a whole list with "
+                                "“Paste list”, or use “Add to flashcards” on any mistake.")
         self.stack.addWidget(self.empty)
         self.body.addWidget(self.stack, 1)
 
@@ -121,12 +164,12 @@ class WordList(Page):
                 self.table.setItem(r, col, it)
             lvl = QTableWidgetItem(box_dots(c["box"]))
             lvl.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            lvl.setForeground(QColor(T.ACCENT))
+            lvl.setForeground(QColor(T.TEXT))
             lvl.setToolTip(f"Box {c['box']} of {len(db.BOX_DAYS) - 1} · {c['reviews']} reviews")
             self.table.setItem(r, 4, lvl)
             nxt = QTableWidgetItem(due_text(c["due"]))
             nxt.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
-            nxt.setForeground(QColor(T.WARN if nxt.text() == "Today" else T.MUTED))
+            nxt.setForeground(QColor(T.RED_TEXT if nxt.text() == "Today" else T.MUTED))
             self.table.setItem(r, 5, nxt)
             b = button("", "icon", "trash-2")
             b.setToolTip("Delete card")
@@ -152,6 +195,21 @@ class WordList(Page):
         self._reload()
         self.win.toast(f"Added “{v['word']}”")
 
+    def _paste(self):
+        d = ImportDialog(self.win, import_preview, AI_PROMPT, self.win.toast)
+        if d.exec() != ImportDialog.Accepted:
+            return
+        text, update = d.values()
+        pairs, _ = db.parse_card_lines(text)
+        added, updated, skipped = db.import_cards(pairs, update)
+        self._reload()
+        msg = f"Imported {added} card{'s' * (added != 1)}"
+        if updated:
+            msg += f", updated {updated}"
+        if skipped:
+            msg += f", skipped {skipped}"
+        self.win.toast(msg)
+
     def _cell_changed(self, it):
         if it.column() < len(EDITABLE):
             db.update_card(it.data(Qt.UserRole), EDITABLE[it.column()], it.text().strip())
@@ -165,8 +223,8 @@ class WordList(Page):
 
 
 # ---------------------------------------------------------------- review session
-GRADES = ((db.AGAIN, "Again", T.DANGER), (db.HARD, "Hard", T.WARN),
-          (db.GOOD, "Good", T.GOOD), (db.EASY, "Easy", T.ACCENT))
+GRADES = ((db.AGAIN, "Again", T.RED_TEXT), (db.HARD, "Hard", T.MID),
+          (db.GOOD, "Good", T.TEXT), (db.EASY, "Easy", T.TEXT))
 
 
 class Review(Page):

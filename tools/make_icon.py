@@ -1,12 +1,22 @@
-"""Render assets/icon.png and assets/icon.ico (gradient tile + graduation cap). Run once."""
+"""Render the Nothing-style app icon: black squircle, 5×7 dot-matrix "T", one red dot.
+Writes assets/icon.png (256), assets/icon-128.png and a multi-size assets/icon.ico. Run once."""
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QRectF, Qt
-from PySide6.QtGui import QColor, QGuiApplication, QImage, QLinearGradient, QPainter
-from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QGuiApplication, QImage, QPainter, QPen
 
 ROOT = Path(__file__).resolve().parent.parent
+
+T_GLYPH = [
+    "#####",
+    "..#..",
+    "..#..",
+    "..#..",
+    "..#..",
+    "..#..",
+    "..#..",
+]
 
 
 def render(size: int) -> QImage:
@@ -14,15 +24,21 @@ def render(size: int) -> QImage:
     img.fill(Qt.transparent)
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
-    g = QLinearGradient(0, 0, size, size)
-    g.setColorAt(0, QColor("#7C6BFF"))
-    g.setColorAt(1, QColor("#2FB8DA"))
+    s = size / 256
+    p.setPen(QPen(QColor("#2A2A2A"), max(1.0, 3 * s)))
+    p.setBrush(QColor("#000000"))
+    p.drawRoundedRect(QRectF(2 * s, 2 * s, 252 * s, 252 * s), 60 * s, 60 * s)
+    pitch = 24 * s
+    ox = 128 * s - 2 * pitch
+    oy = 128 * s - 3 * pitch + 4 * s
     p.setPen(Qt.NoPen)
-    p.setBrush(g)
-    p.drawRoundedRect(QRectF(0, 0, size, size), size * 0.22, size * 0.22)
-    svg = (ROOT / "assets/icons/graduation-cap.svg").read_text().replace("currentColor", "#FFFFFF")
-    m = size * 0.2
-    QSvgRenderer(QByteArray(svg.encode())).render(p, QRectF(m, m, size - 2 * m, size - 2 * m))
+    for r, row in enumerate(T_GLYPH):
+        for c, ch in enumerate(row):
+            on = ch == "#"
+            p.setBrush(QColor("#FFFFFF" if on else "#262626"))
+            p.drawEllipse(QPointF(ox + c * pitch, oy + r * pitch), (9.5 if on else 5.5) * s, (9.5 if on else 5.5) * s)
+    p.setBrush(QColor("#D71921"))
+    p.drawEllipse(QPointF(210 * s, 46 * s), 11 * s, 11 * s)
     p.end()
     return img
 
@@ -30,5 +46,5 @@ def render(size: int) -> QImage:
 if __name__ == "__main__":
     app = QGuiApplication(sys.argv)
     render(256).save(str(ROOT / "assets/icon.png"))
-    ok = render(256).save(str(ROOT / "assets/icon.ico"))
-    print("ico written:", ok)
+    render(128).save(str(ROOT / "assets/icon-128.png"))
+    print("ico written:", render(256).save(str(ROOT / "assets/icon.ico")))

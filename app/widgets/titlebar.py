@@ -1,10 +1,11 @@
 """Custom dark title bar for the frameless window (never follows the OS theme)."""
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QColor, QPainter
-from PySide6.QtWidgets import QHBoxLayout, QPushButton, QWidget
+from PySide6.QtGui import QPixmap
+from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QWidget
 
 from .. import theme as T
-from .cards import IconBadge, label
+from ..paths import resource
+from .cards import label
 
 
 class _WinButton(QPushButton):
@@ -18,7 +19,7 @@ class _WinButton(QPushButton):
         self.setFocusPolicy(Qt.NoFocus)
         self.setStyleSheet(
             "QPushButton { background: transparent; border: none; border-radius: 0; min-height: 36px; padding: 0; }"
-            + ("QPushButton:hover { background: #E5484D; }" if danger
+            + (f"QPushButton:hover {{ background: {T.RED}; }}" if danger
                else f"QPushButton:hover {{ background: {T.HOVER}; }}"))
         self.setIconSize(QSize(14, 14))
         self.setIcon(T.icon(icon_name, T.MUTED, 14))
@@ -40,8 +41,13 @@ class TitleBar(QWidget):
         lay = QHBoxLayout(self)
         lay.setContentsMargins(12, 0, 0, 0)
         lay.setSpacing(8)
-        lay.addWidget(IconBadge("graduation-cap", T.ACCENT, 22))
-        lay.addWidget(label("TOEFL Track", "caption"))
+        logo = QLabel()
+        logo.setPixmap(QPixmap(resource("assets/icon.png")).scaled(
+            40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        logo.setFixedSize(20, 20)
+        logo.setScaledContents(True)
+        lay.addWidget(logo)
+        lay.addWidget(label("TOEFL TRACK", "eyebrow"))
         lay.addStretch(1)
         self.btn_min = _WinButton("minus", tip="Minimize")
         self.btn_max = _WinButton("square", tip="Maximize")
@@ -65,7 +71,3 @@ class TitleBar(QWidget):
     def mouseDoubleClickEvent(self, e):
         if e.button() == Qt.LeftButton:
             self.toggle_max()
-
-    def paintEvent(self, _):
-        p = QPainter(self)
-        p.fillRect(self.rect(), QColor(T.BG))

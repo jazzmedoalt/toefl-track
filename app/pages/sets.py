@@ -1,6 +1,6 @@
 """Sets → practices → practice editor, navigated inside one animated stack."""
 from PySide6.QtCore import QDate, QPointF, Qt, QTimer
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDateEdit, QGridLayout, QHBoxLayout,
                                QHeaderView, QLineEdit, QPlainTextEdit, QTableWidget,
                                QTableWidgetItem, QVBoxLayout, QWidget)
@@ -29,11 +29,14 @@ class Sparkline(QWidget):
         path = QPainterPath(pts[0])
         for pt in pts[1:]:
             path.lineTo(pt)
-        p.setPen(QPen(QColor(T.ACCENT), 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
-        p.drawPath(path)
         p.setPen(Qt.NoPen)
-        p.setBrush(QColor(T.score_color(self._s[-1])))
-        p.drawEllipse(pts[-1], 3, 3)
+        p.setBrush(QColor(T.MUTED))
+        length = path.length()
+        steps = max(2, int(length / 5))
+        for k in range(steps + 1):
+            p.drawEllipse(path.pointAtPercent(path.percentAtLength(length * k / steps)), 1.1, 1.1)
+        p.setBrush(QColor(T.RED if self._s[-1] < 5 else T.TEXT))
+        p.drawEllipse(pts[-1], 3.5, 3.5)
 
 
 def _back(text):
@@ -94,7 +97,7 @@ class SetsList(Page):
         c.setAccessibleName(f"Open set {s['name']}")
         c.setMinimumHeight(150)
         top = QHBoxLayout()
-        top.addWidget(IconBadge("layers", T.ACCENT))
+        top.addWidget(IconBadge("layers", T.TEXT))
         top.addStretch(1)
         avg = s["avg"]
         pill = ScorePill(None if avg is None else round(avg))
@@ -390,9 +393,9 @@ class PracticeEditor(Page):
             elif key == "correct":
                 it.setForeground(QColor(T.GOOD))
             elif key == "category":
-                it.setForeground(QColor(T.ACCENT))
+                it.setForeground(QColor(T.MUTED))
             self.table.setItem(r, c, it)
-        fc = button("", "icon", "check" if carded else "sparkles", T.GOOD if carded else T.ACCENT)
+        fc = button("", "icon", "check" if carded else "sparkles", T.TEXT if carded else T.RED)
         fc.setToolTip("Already in flashcards" if carded else "Add to flashcards")
         fc.setAccessibleName(fc.toolTip())
         fc.setEnabled(not carded)

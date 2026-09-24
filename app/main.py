@@ -8,6 +8,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QWidget
 
 from . import db
 from . import theme as T
+from .pages.calendar import CalendarPage
 from .pages.dashboard import DashboardPage
 from .pages.flashcards import FlashcardsPage
 from .pages.mistakes import MistakesPage
@@ -20,11 +21,12 @@ from .widgets.titlebar import TitleBar
 from .widgets.toast import AnimatedStack, Toast
 
 GRIP = 6  # px of window edge used for resizing
-DASH, SETS, MISTAKES, FLASHCARDS, QUIZ, SETTINGS = range(6)
+DASH, SETS, CALENDAR, MISTAKES, FLASHCARDS, QUIZ, SETTINGS = range(7)
 
 
 class MainWindow(QWidget):
-    DASH, SETS, MISTAKES, FLASHCARDS, QUIZ, SETTINGS = DASH, SETS, MISTAKES, FLASHCARDS, QUIZ, SETTINGS
+    DASH, SETS, CALENDAR, MISTAKES, FLASHCARDS, QUIZ, SETTINGS = (DASH, SETS, CALENDAR, MISTAKES, FLASHCARDS,
+                                                                  QUIZ, SETTINGS)
 
     def __init__(self):
         super().__init__()
@@ -44,7 +46,7 @@ class MainWindow(QWidget):
 
         row = QHBoxLayout()
         row.setSpacing(0)
-        self.sidebar = Sidebar([("Dashboard", "layout-dashboard"), ("Sets", "layers"),
+        self.sidebar = Sidebar([("Dashboard", "layout-dashboard"), ("Sets", "layers"), ("Calendar", "calendar-days"),
                                 ("Mistakes", "book-x"), ("Flashcards", "sparkles"), ("Quiz", "brain"),
                                 ("Settings", "settings")])
         self.sidebar.navigate.connect(self.go)
@@ -52,11 +54,12 @@ class MainWindow(QWidget):
         self.pages = AnimatedStack()
         self.dashboard = DashboardPage(self)
         self.sets = SetsPage(self)
+        self.calendar = CalendarPage(self)
         self.mistakes = MistakesPage(self)
         self.flashcards = FlashcardsPage(self)
         self.quiz = QuizPage(self)
         self.settings = SettingsPage(self)
-        for p in (self.dashboard, self.sets, self.mistakes, self.flashcards, self.quiz, self.settings):
+        for p in (self.dashboard, self.sets, self.calendar, self.mistakes, self.flashcards, self.quiz, self.settings):
             self.pages.addWidget(p)
         row.addWidget(self.pages, 1)
         root.addLayout(row, 1)
@@ -139,11 +142,22 @@ class MainWindow(QWidget):
         if not self.isMaximized():
             self._root.setContentsMargins(GRIP, GRIP, GRIP, GRIP)
 
-    def paintEvent(self, _):
+    def paintEvent(self, e):
         p = QPainter(self)
         p.fillRect(self.rect(), QColor(T.BG))
+        # Nothing-style dot grid across the whole window
+        dot = QColor(T.TEXT)
+        dot.setAlphaF(0.07)
+        p.setPen(Qt.NoPen)
+        p.setBrush(dot)
+        r = e.rect()
+        step = 18
+        for y in range(r.top() - r.top() % step + 9, r.bottom() + 1, step):
+            for x in range(r.left() - r.left() % step + 9, r.right() + 1, step):
+                p.drawEllipse(QPoint(x, y), 1, 1)
         if not self.isMaximized():
             p.setPen(QPen(QColor(T.BORDER), 1))
+            p.setBrush(Qt.NoBrush)  # otherwise the dot brush floods the window grey
             p.drawRect(QRect(0, 0, self.width() - 1, self.height() - 1))
 
 
@@ -153,7 +167,7 @@ def _dark_palette() -> QPalette:
     roles = {
         QPalette.Window: T.BG, QPalette.WindowText: T.TEXT, QPalette.Base: T.RAISED,
         QPalette.AlternateBase: T.SURFACE, QPalette.Text: T.TEXT, QPalette.Button: T.RAISED,
-        QPalette.ButtonText: T.TEXT, QPalette.Highlight: T.ACCENT_BTN, QPalette.HighlightedText: "#FFFFFF",
+        QPalette.ButtonText: T.TEXT, QPalette.Highlight: T.RED, QPalette.HighlightedText: "#FFFFFF",
         QPalette.ToolTipBase: T.RAISED, QPalette.ToolTipText: T.TEXT, QPalette.PlaceholderText: T.FAINT,
         QPalette.Link: T.ACCENT, QPalette.Mid: T.BORDER, QPalette.Dark: T.BG, QPalette.Light: T.HOVER,
     }
@@ -168,10 +182,11 @@ def create_app() -> QApplication:
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)
     app.setApplicationName("TOEFL Track")
+    app.setDesktopFileName("io.github.jazzmedoalt.toefltrack")  # matches the AppImage .desktop (icon on Wayland)
     app.setStyle("Fusion")  # consistent base on every OS; our QSS sits on top
     app.setPalette(_dark_palette())
-    for w in ("Regular", "Medium", "SemiBold", "Bold"):
-        QFontDatabase.addApplicationFont(resource(f"assets/fonts/Inter-{w}.ttf"))
+    for f in ("Doto.ttf", "SpaceGrotesk.ttf", "SpaceMono-Regular.ttf", "SpaceMono-Bold.ttf"):
+        QFontDatabase.addApplicationFont(resource(f"assets/fonts/{f}"))
     font = QFont(T.FONT)
     font.setPixelSize(14)
     font.setHintingPreference(QFont.PreferNoHinting)
