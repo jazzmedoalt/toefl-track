@@ -10,7 +10,7 @@ from .. import theme as T
 from ..widgets.cards import Card, EmptyState, IconBadge, ScorePicker, ScorePill, button, label
 from ..widgets.dialog import confirm
 from ..widgets.toast import AnimatedStack
-from .base import MARGIN, Page, clear_layout
+from .base import MARGIN, Page, add_card_from_mistake, clear_layout
 
 
 class Sparkline(QWidget):
@@ -317,7 +317,7 @@ class PracticeEditor(Page):
         for i, mode in enumerate((QHeaderView.Stretch, QHeaderView.Stretch, QHeaderView.Stretch,
                                   QHeaderView.Stretch, QHeaderView.Fixed)):
             hh.setSectionResizeMode(i, mode)
-        hh.resizeSection(4, 44)
+        hh.resizeSection(4, 80)
         self.table.itemChanged.connect(self._cell_changed)
         mc.layout().addWidget(self.table)
         self.no_mistakes = label("No mistakes logged yet. A perfect score, or just getting started?",
@@ -371,14 +371,15 @@ class PracticeEditor(Page):
 
     def _load_table(self):
         rows = db.list_mistakes(self.pid)
+        carded = db.card_mistake_ids()
         self.table.blockSignals(True)
         self.table.setRowCount(0)
         for m in rows:
-            self._append_row(m)
+            self._append_row(m, m["id"] in carded)
         self.table.blockSignals(False)
         self._fit_table()
 
-    def _append_row(self, m):
+    def _append_row(self, m, carded=False):
         r = self.table.rowCount()
         self.table.insertRow(r)
         for c, key in enumerate(COLS):
@@ -391,6 +392,11 @@ class PracticeEditor(Page):
             elif key == "category":
                 it.setForeground(QColor(T.ACCENT))
             self.table.setItem(r, c, it)
+        fc = button("", "icon", "check" if carded else "sparkles", T.GOOD if carded else T.ACCENT)
+        fc.setToolTip("Already in flashcards" if carded else "Add to flashcards")
+        fc.setAccessibleName(fc.toolTip())
+        fc.setEnabled(not carded)
+        fc.clicked.connect(lambda _=False, mid=m["id"]: self._to_card(mid))
         b = button("", "icon", "trash-2")
         b.setToolTip("Delete mistake")
         b.setAccessibleName("Delete mistake")
@@ -398,6 +404,8 @@ class PracticeEditor(Page):
         host = QWidget()
         hl = QHBoxLayout(host)
         hl.setContentsMargins(0, 0, 0, 0)
+        hl.setSpacing(2)
+        hl.addWidget(fc, 0, Qt.AlignCenter)
         hl.addWidget(b, 0, Qt.AlignCenter)
         self.table.setCellWidget(r, 4, host)
 
@@ -449,7 +457,7 @@ class PracticeEditor(Page):
             self.win.toast("Type the wrong answer or the correct one first")
             return
         mid = db.add_mistake(self.pid, wrong, correct, cat, topic)
-        self.table.blockSignals(True)
+        self.table.blockSignals(True)  # new mistake: never has a card yet
         self._append_row({"id": mid, "wrong": wrong, "correct": correct, "category": cat, "topic": topic})
         self.table.blockSignals(False)
         self._fit_table()
@@ -466,6 +474,11 @@ class PracticeEditor(Page):
         if it.column() < len(COLS):
             db.update_mistake(it.data(Qt.UserRole), COLS[it.column()], it.text().strip())
             self.win.toast("Saved", 900)
+
+    def _to_card(self, mid):
+        m = next((x for x in db.list_mistakes(self.pid) if x["id"] == mid), None)
+        if m and add_card_from_mistake(self.win, m):
+            self._load_table()
 
     def _delete_mistake(self, mid):
         db.delete_mistake(mid)

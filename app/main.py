@@ -9,7 +9,9 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QVBoxLayout, QWidget
 from . import db
 from . import theme as T
 from .pages.dashboard import DashboardPage
+from .pages.flashcards import FlashcardsPage
 from .pages.mistakes import MistakesPage
+from .pages.quiz import QuizPage
 from .pages.sets import SetsPage
 from .pages.settings import SettingsPage
 from .paths import resource
@@ -18,10 +20,12 @@ from .widgets.titlebar import TitleBar
 from .widgets.toast import AnimatedStack, Toast
 
 GRIP = 6  # px of window edge used for resizing
-DASH, SETS, MISTAKES, SETTINGS = range(4)
+DASH, SETS, MISTAKES, FLASHCARDS, QUIZ, SETTINGS = range(6)
 
 
 class MainWindow(QWidget):
+    DASH, SETS, MISTAKES, FLASHCARDS, QUIZ, SETTINGS = DASH, SETS, MISTAKES, FLASHCARDS, QUIZ, SETTINGS
+
     def __init__(self):
         super().__init__()
         self.setObjectName("Root")
@@ -41,15 +45,18 @@ class MainWindow(QWidget):
         row = QHBoxLayout()
         row.setSpacing(0)
         self.sidebar = Sidebar([("Dashboard", "layout-dashboard"), ("Sets", "layers"),
-                                ("Mistakes", "book-x"), ("Settings", "settings")])
+                                ("Mistakes", "book-x"), ("Flashcards", "sparkles"), ("Quiz", "brain"),
+                                ("Settings", "settings")])
         self.sidebar.navigate.connect(self.go)
         row.addWidget(self.sidebar)
         self.pages = AnimatedStack()
         self.dashboard = DashboardPage(self)
         self.sets = SetsPage(self)
         self.mistakes = MistakesPage(self)
+        self.flashcards = FlashcardsPage(self)
+        self.quiz = QuizPage(self)
         self.settings = SettingsPage(self)
-        for p in (self.dashboard, self.sets, self.mistakes, self.settings):
+        for p in (self.dashboard, self.sets, self.mistakes, self.flashcards, self.quiz, self.settings):
             self.pages.addWidget(p)
         row.addWidget(self.pages, 1)
         root.addLayout(row, 1)
@@ -67,6 +74,10 @@ class MainWindow(QWidget):
             self.sets.editor.flush()
         self.pages.widget(index).refresh()
         self.pages.slide_to(index, direction or (1 if index > cur else -1))
+
+    def go_page(self, index):
+        self.sidebar.select(index)
+        self.go(index)
 
     def go_sets(self, focus_new=False):
         self.sidebar.select(SETS)

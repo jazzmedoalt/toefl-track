@@ -2,7 +2,9 @@
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QHBoxLayout, QScrollArea, QVBoxLayout, QWidget
 
+from .. import db
 from ..widgets.cards import label
+from ..widgets.dialog import ask_card
 
 MARGIN = 28
 
@@ -56,3 +58,14 @@ def clear_layout(lay):
             item.widget().deleteLater()
         elif item.layout():
             clear_layout(item.layout())
+
+
+def add_card_from_mistake(win, m) -> bool:
+    """Open the card dialog prefilled from a mistake; returns True if a card was created."""
+    v = ask_card(win, {"word": m["correct"] or m["wrong"],
+                       "meaning": f"Not: {m['wrong']}" if m["wrong"] and m["correct"] else ""})
+    if not v:
+        return False
+    db.add_card(**v, mistake_id=m["id"])
+    win.toast(f"Added “{v['word']}” to flashcards")
+    return True

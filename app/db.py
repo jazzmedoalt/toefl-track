@@ -1,7 +1,8 @@
 """SQLite storage: sets -> practices (score /10) -> mistakes."""
 import csv
+import re
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 
 from .paths import DB_PATH
 
@@ -33,6 +34,26 @@ CREATE TABLE IF NOT EXISTS mistakes (
     topic TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS cards (
+    id INTEGER PRIMARY KEY,
+    word TEXT NOT NULL DEFAULT '',
+    meaning TEXT NOT NULL DEFAULT '',
+    example TEXT NOT NULL DEFAULT '',
+    synonyms TEXT NOT NULL DEFAULT '',
+    mistake_id INTEGER REFERENCES mistakes(id) ON DELETE SET NULL,
+    box INTEGER NOT NULL DEFAULT 0,
+    due TEXT NOT NULL DEFAULT (date('now', 'localtime')),
+    reviews INTEGER NOT NULL DEFAULT 0,
+    lapses INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS study_log (
+    id INTEGER PRIMARY KEY,
+    kind TEXT NOT NULL,          -- 'card' | 'quiz'
+    ref_id INTEGER,
+    result INTEGER NOT NULL,     -- card: grade 0-3, quiz: 1 correct / 0 wrong
+    day TEXT NOT NULL
+);
 """
 
 _conn = None
@@ -211,7 +232,155 @@ def stats():
         "series": series,
         "top": top,
         "recent": recent,
+        "due": c.execute("SELECT COUNT(*) FROM cards WHERE due <= ?", (_today().isoformat(),)).fetchone()[0],
+        "cards": c.execute("SELECT COUNT(*) FROM cards").fetchone()[0],
+        "streak": streak(),
     }
+
+
+# ---------- flashcards (Leitner boxes) ----------
+BOX_DAYS = [0, 1, 3, 7, 14, 30, 60]
+AGAIN, HARD, GOOD, EASY = range(4)
+
+
+def _today():
+    return date.today()
+
+
+def list_cards(search=""):
+    sql = "SELECT * FROM cards"
+    args = []
+    if search:
+        sql += " WHERE word LIKE ? OR meaning LIKE ? OR synonyms LIKE ? OR example LIKE ?"
+        args = [f"%{search}%"] * 4
+    return _all(sql + " ORDER BY due, id", args)
+
+
+def get_card(cid):
+    rows = _all("SELECT * FROM cards WHERE id=?", (cid,))
+    return rows[0] if rows else None
+
+
+def add_card(word, meaning="", example="", synonyms="", mistake_id=None):
+    return _run("INSERT INTO cards(word, meaning, example, synonyms, mistake_id, due) VALUES(?,?,?,?,?,?)",
+                (word, meaning, example, synonyms, mistake_id, _today().isoformat())).lastrowid
+
+
+_CARD_FIELDS = {"word", "meaning", "example", "synonyms"}
+
+
+def update_card(cid, field, value):
+    if field in _CARD_FIELDS:
+        _run(f"UPDATE cards SET {field}=? WHERE id=?", (value, cid))
+
+
+def delete_card(cid):
+    _run("DELETE FROM cards WHERE id=?", (cid,))
+
+
+def due_cards():
+    return _all("SELECT * FROM cards WHERE due <= ? ORDER BY box, due, id", (_today().isoformat(),))
+
+
+def card_mistake_ids():
+    return {r["mistake_id"] for r in _all("SELECT mistake_id FROM cards WHERE mistake_id IS NOT NULL")}
+
+
+def review_card(cid, grade):
+    """Move the card between Leitner boxes and schedule its next review."""
+    c = get_card(cid)
+    box, lapses = c["box"], c["lapses"]
+    if grade == AGAIN:
+        box, lapses, days = 0, lapses + 1, 0
+    elif grade == HARD:
+        days = 1
+    else:
+        box = min(len(BOX_DAYS) - 1, box + (1 if grade == GOOD else 2))
+        days = BOX_DAYS[box]
+    due = (_today() + timedelta(days=days)).isoformat()
+    _run("UPDATE cards SET box=?, due=?, lapses=?, reviews=reviews+1 WHERE id=?", (box, due, lapses, cid))
+    _log("card", cid, grade)
+    return box, due
+
+
+def _log(kind, ref_id, result):
+    _run("INSERT INTO study_log(kind, ref_id, result, day) VALUES(?,?,?,?)",
+         (kind, ref_id, int(result), _today().isoformat()))
+
+
+# ---------- quiz ----------
+def normalize(text):
+    return " ".join(re.sub(r"[^\w\s]", " ", (text or "").lower()).split())
+
+
+def is_correct(answer, expected):
+    return normalize(answer) == normalize(expected) and normalize(expected) != ""
+
+
+def quiz_pool(set_id=None, category="", n=None):
+    """Never-quizzed mistakes first, then the most recently failed, then the rest (oldest first)."""
+    sql = """SELECT m.*, s.name AS set_name, p.name AS practice_name,
+                    (SELECT COUNT(*) FROM study_log l WHERE l.kind='quiz' AND l.ref_id=m.id) AS tries,
+                    (SELECT l.result FROM study_log l WHERE l.kind='quiz' AND l.ref_id=m.id
+                      ORDER BY l.id DESC LIMIT 1) AS last_ok,
+                    (SELECT MAX(l.id) FROM study_log l WHERE l.kind='quiz' AND l.ref_id=m.id) AS last_id
+             FROM mistakes m JOIN practices p ON p.id = m.practice_id JOIN sets s ON s.id = p.set_id
+             WHERE m.correct != ''"""
+    args = []
+    if set_id:
+        sql += " AND s.id = ?"
+        args.append(set_id)
+    if category:
+        sql += " AND m.category = ?"
+        args.append(category)
+    rows = _all(sql, args)
+    rows.sort(key=lambda r: (0, 0, r["id"]) if r["tries"] == 0
+              else (1, -r["last_id"], 0) if r["last_ok"] == 0
+              else (2, r["last_id"], 0))
+    return rows[:n] if n else rows
+
+
+def log_quiz(mid, ok):
+    _log("quiz", mid, 1 if ok else 0)
+
+
+# ---------- activity / streak / exam ----------
+def activity_days():
+    """{iso_day: {'practices': n, 'reviews': n, 'quiz': n}}"""
+    out = {}
+    for r in _all("SELECT date AS day, COUNT(*) n FROM practices GROUP BY date"):
+        out.setdefault(r["day"], {"practices": 0, "reviews": 0, "quiz": 0})["practices"] = r["n"]
+    for r in _all("SELECT day, kind, COUNT(*) n FROM study_log GROUP BY day, kind"):
+        key = "reviews" if r["kind"] == "card" else "quiz"
+        out.setdefault(r["day"], {"practices": 0, "reviews": 0, "quiz": 0})[key] = r["n"]
+    return out
+
+
+def streak(days=None):
+    """Consecutive active days ending today (or yesterday, so it survives until you study today)."""
+    days = set(days if days is not None else activity_days())
+    d = _today()
+    if d.isoformat() not in days:
+        d -= timedelta(days=1)
+    n = 0
+    while d.isoformat() in days:
+        n += 1
+        d -= timedelta(days=1)
+    return n
+
+
+def exam():
+    """Exam countdown and target progress, or None when no exam date is set."""
+    raw = get_setting("exam_date")
+    if not raw:
+        return None
+    target = int(get_setting("target_avg", "8"))
+    days_left = (date.fromisoformat(raw) - _today()).days
+    recent = [r["score"] for r in _all(
+        "SELECT score FROM practices WHERE score IS NOT NULL ORDER BY date DESC, id DESC LIMIT 5")]
+    avg = sum(recent) / len(recent) if recent else None
+    return {"date": raw, "days_left": days_left, "target": target, "recent_avg": avg,
+            "gap": None if avg is None else max(0.0, target - avg)}
 
 
 def export_csv(path):

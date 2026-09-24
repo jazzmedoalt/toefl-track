@@ -1,7 +1,9 @@
 """Painted, animated building blocks: cards, stat tiles, score ring/pill/picker, bars, toggle."""
-from PySide6.QtCore import (QEasingCurve, QPointF, QRectF, QSize, Qt,
+import math
+
+from PySide6.QtCore import (QEasingCurve, QPoint, QPointF, QPropertyAnimation, QRectF, QSize, Qt,
                             QVariantAnimation, Signal)
-from PySide6.QtGui import QColor, QConicalGradient, QFont, QPainter, QPen
+from PySide6.QtGui import QColor, QConicalGradient, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractButton, QFrame, QHBoxLayout, QLabel, QPushButton,
                                QSizePolicy, QVBoxLayout, QWidget)
 
@@ -109,7 +111,8 @@ class IconBadge(QWidget):
 
     def __init__(self, icon_name, color=T.ACCENT, size=34, parent=None):
         super().__init__(parent)
-        self._pm = T.icon_pixmap(icon_name, color, 18)
+        self._icon = max(18, round(size * 0.46))
+        self._pm = T.icon_pixmap(icon_name, color, self._icon)
         self._color = QColor(color)
         self.setFixedSize(size, size)
 
@@ -120,16 +123,16 @@ class IconBadge(QWidget):
         bg.setAlphaF(0.14)
         p.setPen(Qt.NoPen)
         p.setBrush(bg)
-        p.drawRoundedRect(QRectF(self.rect()), 9, 9)
-        x = (self.width() - 18) / 2
+        p.drawRoundedRect(QRectF(self.rect()), max(9, self.width() * 0.26), max(9, self.width() * 0.26))
+        x = (self.width() - self._icon) / 2
         p.drawPixmap(QPointF(x, x), self._pm)
 
 
 class StatCard(Card):
     """Stat tile whose number counts up when set."""
 
-    def __init__(self, title, icon_name, color=T.ACCENT, parent=None):
-        super().__init__(parent, padding=16)
+    def __init__(self, title, icon_name, color=T.ACCENT, parent=None, clickable=False):
+        super().__init__(parent, clickable=clickable, padding=16)
         top = QHBoxLayout()
         top.setSpacing(10)
         top.addWidget(IconBadge(icon_name, color))
@@ -462,3 +465,160 @@ class EmptyState(QWidget):
             self.action = button(action_text, "primary", "plus")
             lay.addWidget(self.action, 0, Qt.AlignHCenter)
 
+
+
+class ProgressBar(QWidget):
+    """Thin gradient bar that animates to its value (0..1)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._v = 0.0
+        self.setFixedHeight(6)
+        self._a = _anim(self, self._set, 300)
+
+    def _set(self, v):
+        self._v = float(v)
+        self.update()
+
+    def set_value(self, v):
+        self._a.stop()
+        self._a.setDuration(T.dur(300))
+        self._a.setStartValue(self._v)
+        self._a.setEndValue(float(v))
+        self._a.start()
+        if not T.MOTION["enabled"]:
+            self._set(v)
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        p.setPen(Qt.NoPen)
+        p.setBrush(QColor(T.RAISED))
+        p.drawRoundedRect(QRectF(self.rect()), 3, 3)
+        if self._v > 0:
+            g = QLinearGradient(0, 0, self.width(), 0)
+            g.setColorAt(0, QColor(T.ACCENT))
+            g.setColorAt(1, QColor(T.ACCENT_2))
+            p.setBrush(g)
+            p.drawRoundedRect(QRectF(0, 0, max(6.0, self.width() * self._v), self.height()), 3, 3)
+
+
+class FlipCard(QWidget):
+    """Flashcard that flips (x-scale) between the word and its meaning. Click or Space flips it."""
+    flipped = Signal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._card = None
+        self._back = False
+        self._t = 0.0        # 0 = front, 1 = back
+        self.setMinimumHeight(260)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setAccessibleName("Flashcard, press Space to flip")
+        self._a = _anim(self, self._set, 320, QEasingCurve.InOutCubic)
+
+    def _set(self, v):
+        self._t = float(v)
+        self.update()
+
+    def set_card(self, card):
+        self._card = card
+        self._back = False
+        self._a.stop()
+        self._set(0.0)
+
+    def is_back(self):
+        return self._back
+
+    def flip(self):
+        if not self._card:
+            return
+        self._back = not self._back
+        self._a.stop()
+        self._a.setDuration(T.dur(320))
+        self._a.setStartValue(self._t)
+        self._a.setEndValue(1.0 if self._back else 0.0)
+        self._a.start()
+        if not T.MOTION["enabled"]:
+            self._set(1.0 if self._back else 0.0)
+        self.flipped.emit(self._back)
+
+    def mouseReleaseEvent(self, e):
+        if e.button() == Qt.LeftButton:
+            self.flip()
+
+    def keyPressEvent(self, e):
+        if e.key() in (Qt.Key_Space, Qt.Key_Return, Qt.Key_Enter):
+            self.flip()
+        else:
+            super().keyPressEvent(e)
+
+    def _font(self, px, weight=QFont.Normal, italic=False):
+        f = QFont(T.FONT)
+        f.setPixelSize(px)
+        f.setWeight(weight)
+        f.setItalic(italic)
+        return f
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w = min(self.width() - 4, 620)
+        r = QRectF((self.width() - w) / 2, 2, w, self.height() - 4)
+        sx = abs(math.cos(math.pi * self._t))
+        showing_back = self._t > 0.5
+        c = r.center()
+        p.translate(c)
+        p.scale(max(sx, 0.001), 1)
+        p.translate(-c)
+        p.setPen(QPen(QColor(T.ACCENT if self.hasFocus() else T.BORDER_HI), 1.2))
+        p.setBrush(QColor(T.RAISED if showing_back else T.SURFACE))
+        p.drawRoundedRect(r, 18, 18)
+        if not self._card:
+            return
+        inner = r.adjusted(28, 22, -28, -22)
+        p.setPen(QColor(T.MUTED))
+        p.setFont(self._font(11, QFont.DemiBold))
+        p.drawText(inner, Qt.AlignTop | Qt.AlignHCenter, "MEANING" if showing_back else "WORD")
+        if not showing_back:
+            p.setPen(QColor(T.TEXT))
+            p.setFont(self._font(34, QFont.DemiBold))
+            p.drawText(inner, Qt.AlignCenter | Qt.TextWordWrap, self._card["word"])
+            p.setPen(QColor(T.FAINT))
+            p.setFont(self._font(12))
+            p.drawText(inner, Qt.AlignBottom | Qt.AlignHCenter, "Click or press Space to flip")
+            return
+        body = inner.adjusted(0, 26, 0, -24)
+        meaning = self._card["meaning"] or "(no meaning yet — add one in the word list)"
+        blocks = [(meaning, self._font(22, QFont.DemiBold), T.TEXT)]
+        if self._card["example"]:
+            blocks.append((f"“{self._card['example']}”", self._font(15, italic=True), T.MUTED))
+        if self._card["synonyms"]:
+            blocks.append(("≈ " + self._card["synonyms"], self._font(13, QFont.Medium), T.ACCENT))
+        heights = []
+        for text, font, _ in blocks:
+            p.setFont(font)
+            heights.append(p.boundingRect(body, Qt.AlignHCenter | Qt.TextWordWrap, text).height())
+        gap = 14
+        y = body.top() + max(0.0, (body.height() - sum(heights) - gap * (len(blocks) - 1)) / 2)
+        for (text, font, color), h in zip(blocks, heights):
+            p.setFont(font)
+            p.setPen(QColor(color))
+            p.drawText(QRectF(body.left(), y, body.width(), h), Qt.AlignHCenter | Qt.TextWordWrap, text)
+            y += h + gap
+        p.setPen(QColor(T.FAINT))
+        p.setFont(self._font(12))
+        p.drawText(inner, Qt.AlignBottom | Qt.AlignHCenter, self._card["word"])
+
+
+def shake(widget):
+    """Short horizontal shake for a wrong answer (skipped with reduced motion)."""
+    if not T.MOTION["enabled"]:
+        return
+    start = widget.pos()
+    a = QPropertyAnimation(widget, b"pos", widget)
+    a.setDuration(360)
+    for i, dx in enumerate((0, -8, 8, -6, 6, -3, 3, 0)):
+        a.setKeyValueAt(i / 7, start + QPoint(dx, 0))
+    a.start(QPropertyAnimation.DeleteWhenStopped)

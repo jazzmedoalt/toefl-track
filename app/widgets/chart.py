@@ -1,7 +1,9 @@
-"""Score-trend area chart painted with QPainter: animated draw-in and hover values."""
+"""QPainter charts: score-trend area chart and a GitHub-style activity heatmap."""
+from datetime import date, timedelta
+
 from PySide6.QtCore import QEasingCurve, QPointF, QRectF, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QToolTip, QWidget
 
 from .. import theme as T
 
@@ -148,3 +150,124 @@ class TrendChart(QWidget):
             f.setWeight(QFont.Normal)
             p.setFont(f)
             p.drawText(box.adjusted(10, 20, -10, -4), Qt.AlignLeft | Qt.AlignVCenter, sub)
+
+
+class ActivityHeatmap(QWidget):
+    """Last N weeks of study activity; columns fade in left to right."""
+    CELL, GAP, LEFT, TOP = 13, 3, 30, 18
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._weeks = 20
+        self._days = {}
+        self._t = 1.0
+        self.setMouseTracking(True)
+        step = self.CELL + self.GAP
+        self.setMinimumSize(self.LEFT + 12 * step, self.TOP + 7 * step + 22)
+        self._a = QVariantAnimation(self)
+        self._a.setEasingCurve(QEasingCurve.OutCubic)
+        self._a.valueChanged.connect(self._set)
+
+    def resizeEvent(self, e):
+        # show as many weeks as fit (12..53)
+        self._weeks = max(12, min(53, (self.width() - self.LEFT) // (self.CELL + self.GAP)))
+        super().resizeEvent(e)
+
+    def _set(self, v):
+        self._t = float(v)
+        self.update()
+
+    def set_days(self, days):
+        self._days = days
+        self._a.stop()
+        self._a.setDuration(T.dur(900))
+        self._a.setStartValue(0.0)
+        self._a.setEndValue(1.0)
+        self._a.start()
+        if not T.MOTION["enabled"]:
+            self._set(1.0)
+
+    def _start(self):
+        today = date.today()
+        return today - timedelta(days=today.weekday()) - timedelta(weeks=self._weeks - 1)
+
+    def _cell_rect(self, col, row):
+        step = self.CELL + self.GAP
+        return QRectF(self.LEFT + col * step, self.TOP + row * step, self.CELL, self.CELL)
+
+    def _day_at(self, pos):
+        step = self.CELL + self.GAP
+        col = int((pos.x() - self.LEFT) // step)
+        row = int((pos.y() - self.TOP) // step)
+        if 0 <= col < self._weeks and 0 <= row < 7:
+            d = self._start() + timedelta(weeks=col, days=row)
+            if d <= date.today() and self._cell_rect(col, row).contains(pos):
+                return d
+        return None
+
+    def mouseMoveEvent(self, e):
+        d = self._day_at(e.position())
+        if not d:
+            QToolTip.hideText()
+            return
+        a = self._days.get(d.isoformat())
+        if a:
+            parts = [f"{v} {k if v != 1 else k.rstrip('s')}" for k, v in
+                     (("practices", a["practices"]), ("reviews", a["reviews"]), ("quiz answers", a["quiz"])) if v]
+            txt = f"{d.strftime('%a %d %b')}: " + ", ".join(parts)
+        else:
+            txt = f"{d.strftime('%a %d %b')}: no study"
+        QToolTip.showText(e.globalPosition().toPoint(), txt, self)
+
+    @staticmethod
+    def _level(a):
+        if not a:
+            return 0
+        n = a["practices"] * 5 + a["reviews"] + a["quiz"]
+        return 1 if n < 5 else 2 if n < 12 else 3 if n < 25 else 4
+
+    def paintEvent(self, _):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        f = QFont(T.FONT)
+        f.setPixelSize(10)
+        p.setFont(f)
+        start, today = self._start(), date.today()
+        p.setPen(QColor(T.FAINT))
+        for row, name in ((0, "Mon"), (2, "Wed"), (4, "Fri")):
+            p.drawText(QRectF(0, self._cell_rect(0, row).top() - 2, self.LEFT - 6, self.CELL + 4),
+                       Qt.AlignRight | Qt.AlignVCenter, name)
+        last_month = None
+        for col in range(self._weeks):
+            d0 = start + timedelta(weeks=col)
+            if d0.month != last_month:
+                last_month = d0.month
+                if col < self._weeks - 2:
+                    p.setPen(QColor(T.FAINT))
+                    p.drawText(QRectF(self._cell_rect(col, 0).left(), 0, 40, 14), Qt.AlignLeft, d0.strftime("%b"))
+            alpha = max(0.0, min(1.0, (self._t * (self._weeks + 6) - col) / 6))
+            for row in range(7):
+                d = d0 + timedelta(days=row)
+                if d > today:
+                    continue
+                lvl = self._level(self._days.get(d.isoformat()))
+                c = QColor(T.RAISED) if lvl == 0 else T.mix(T.SURFACE, T.ACCENT if lvl < 4 else T.ACCENT_2,
+                                                             (0.35, 0.6, 0.85, 1.0)[lvl - 1])
+                c.setAlphaF(alpha)
+                p.setPen(QPen(QColor(T.ACCENT_2), 1.2) if d == today else Qt.NoPen)
+                p.setBrush(c)
+                p.drawRoundedRect(self._cell_rect(col, row), 3, 3)
+        # legend
+        y = self.TOP + 7 * (self.CELL + self.GAP) + 6
+        x = self.LEFT + self._weeks * (self.CELL + self.GAP) - 5 * (self.CELL + self.GAP) - 34
+        p.setPen(QColor(T.FAINT))
+        p.drawText(QRectF(x - 34, y - 1, 30, self.CELL + 2), Qt.AlignRight | Qt.AlignVCenter, "Less")
+        for i in range(5):
+            c = QColor(T.RAISED) if i == 0 else T.mix(T.SURFACE, T.ACCENT if i < 4 else T.ACCENT_2,
+                                                     (0.35, 0.6, 0.85, 1.0)[i - 1])
+            p.setPen(Qt.NoPen)
+            p.setBrush(c)
+            p.drawRoundedRect(QRectF(x + i * (self.CELL + self.GAP), y, self.CELL, self.CELL), 3, 3)
+        p.setPen(QColor(T.FAINT))
+        p.drawText(QRectF(x + 5 * (self.CELL + self.GAP) + 2, y - 1, 34, self.CELL + 2),
+                   Qt.AlignLeft | Qt.AlignVCenter, "More")

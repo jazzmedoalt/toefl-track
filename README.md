@@ -7,8 +7,11 @@ A small, dark desktop app for tracking TOEFL practice.
 - **Dashboard:** practice count, average, best score, animated score trend, top mistake types, recent practices.
 - **Sets:** one card per set with its average and a sparkline. Open a set to see its practices.
 - **Practice editor:** pick the score from 0 to 10 by clicking or by typing a digit. Type a mistake and press **Enter** to add it, and double-click a cell to edit it. Everything saves automatically.
-- **Mistakes:** every wrong answer in one searchable list, filtered by type or set. Double-click a row to open its practice.
-- **Settings:** open the data folder, export to CSV, and turn motion down.
+- **Mistakes:** every wrong answer in one searchable list, filtered by type or set. Double-click a row to open its practice, or right-click it to add it to flashcards.
+- **Flashcards:** a word list (word, meaning, example, synonyms) with flip-card reviews and spaced repetition. Grade each card with 1 Again, 2 Hard, 3 Good or 4 Easy. Cards you know come back less and less often, and cards you miss come back right away. You can turn any mistake into a card with one click.
+- **Quiz:** see your old wrong answer and type the correct one. Mistakes you've never been quizzed on come first, then the ones you missed most recently. "I was right" accepts a correct answer written differently.
+- **Exam and streak:** set your test date and target average to get a countdown and an "on track" check. The dashboard also shows a daily study streak and a GitHub-style activity calendar.
+- **Settings:** exam date and target, open the data folder, export to CSV, and turn motion down.
 
 ## Portable
 

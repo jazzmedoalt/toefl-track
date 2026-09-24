@@ -1,12 +1,12 @@
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QHBoxLayout, QHeaderView, QLineEdit,
-                               QStackedWidget, QTableWidget, QTableWidgetItem)
+                               QMenu, QStackedWidget, QTableWidget, QTableWidgetItem)
 
 from .. import db
 from .. import theme as T
-from ..widgets.cards import Card, EmptyState, label
-from .base import Page
+from ..widgets.cards import Card, EmptyState, button, label
+from .base import Page, add_card_from_mistake
 
 
 class MistakesPage(Page):
@@ -14,6 +14,9 @@ class MistakesPage(Page):
         super().__init__(win, "Mistakes", "Every wrong answer in one place. Review these before the test.",
                          scroll=False)
         self.count = self.add_action(label("", "muted"))
+        self.card_btn = self.add_action(button("Add to flashcards", None, "sparkles", T.ACCENT))
+        self.card_btn.setToolTip("Turn the selected mistake into a flashcard")
+        self.card_btn.clicked.connect(self._card_selected)
 
         bar = QHBoxLayout()
         bar.setSpacing(8)
@@ -47,7 +50,10 @@ class MistakesPage(Page):
         self.table.setTextElideMode(Qt.ElideRight)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.table.setToolTip("Double-click a row to open its practice")
+        self.table.setToolTip("Double-click a row to open its practice. Right-click for more.")
+        self.table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._menu)
+        self.table.itemSelectionChanged.connect(self._update_card_btn)
         hh = self.table.horizontalHeader()
         hh.setHighlightSections(False)
         hh.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -62,6 +68,7 @@ class MistakesPage(Page):
         self.stack.addWidget(self.empty)
         self.body.addWidget(self.stack, 1)
         self._filling = False
+        self._rows, self._carded = [], set()
 
     def _fill_filters(self):
         self._filling = True
@@ -90,6 +97,8 @@ class MistakesPage(Page):
         filtered = bool(self.search.text().strip() or self.cat.currentData() or self.set_filter.currentData())
         self.count.setText(f"{len(rows)} mistake{'s' * (len(rows) != 1)}")
         self.stack.setCurrentIndex(0 if rows or filtered else 1)
+        self._rows = rows
+        self._carded = db.card_mistake_ids()
         self.table.setRowCount(len(rows))
         colors = {0: T.DANGER, 1: T.GOOD, 2: T.ACCENT}
         for r, m in enumerate(rows):
@@ -101,8 +110,41 @@ class MistakesPage(Page):
                 it.setToolTip(v)
                 it.setForeground(QColor(colors.get(c, T.MUTED if c == 4 else T.TEXT)))
                 self.table.setItem(r, c, it)
+            if m["id"] in self._carded:
+                self.table.item(r, 0).setIcon(T.icon("sparkles", T.ACCENT, 14))
+                self.table.item(r, 0).setToolTip("In flashcards")
+        self._update_card_btn()
 
     def _open(self, row, _col):
         it = self.table.item(row, 0)
         if it:
             self.win.open_practice(it.data(Qt.UserRole))
+
+    def _selected(self):
+        rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
+        return self._rows[rows[0].row()] if rows else None
+
+    def _update_card_btn(self):
+        m = self._selected()
+        self.card_btn.setEnabled(bool(m) and m["id"] not in self._carded)
+
+    def _card_selected(self):
+        m = self._selected()
+        if m and add_card_from_mistake(self.win, m):
+            self._reload()
+
+    def _menu(self, pos):
+        row = self.table.rowAt(pos.y())
+        if row < 0:
+            return
+        self.table.selectRow(row)
+        m = self._rows[row]
+        menu = QMenu(self)
+        a_open = menu.addAction(T.icon("file-text", T.MUTED, 16), "Open practice")
+        a_card = menu.addAction(T.icon("sparkles", T.ACCENT, 16), "Add to flashcards")
+        a_card.setEnabled(m["id"] not in self._carded)
+        chosen = menu.exec(self.table.viewport().mapToGlobal(pos))
+        if chosen is a_open:
+            self._open(row, 0)
+        elif chosen is a_card and add_card_from_mistake(self.win, m):
+            self._reload()
