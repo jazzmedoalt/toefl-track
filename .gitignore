@@ -5,3 +5,4 @@ dist/
 *.spec.bak
 toefl_data.db
 *.csv
+wrong-answers-reason.png
